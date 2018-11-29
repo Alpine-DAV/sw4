@@ -1093,10 +1093,7 @@ void EW::solve( vector<Source*> & a_Sources, vector<TimeSeries*> & a_TimeSeries 
        }
        // Force write all the TimeSeries files for restart
        double time_chkpt_timeseries=MPI_Wtime();
-       for (int ts=0; ts<a_TimeSeries.size(); ts++)
-       {
-         a_TimeSeries[ts]->writeFile();
-       }
+       writeTimeSeries(a_TimeSeries);
 	     double time_chkpt_timeseries_tmp=MPI_Wtime()-time_chkpt_timeseries;
        if( m_output_detailed_timing )
        {

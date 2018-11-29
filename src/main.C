@@ -202,10 +202,7 @@ main(int argc, char **argv)
 
 // save all time series
       
-      for (int ts=0; ts<GlobalTimeSeries.size(); ts++)
-      {
-	GlobalTimeSeries[ts]->writeFile();
-      }
+      simulation.writeTimeSeries(GlobalTimeSeries);
 
       if( myRank == 0 )
       {

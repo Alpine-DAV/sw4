@@ -521,6 +521,8 @@ bool EW::parseInputFile( vector<Source*> & a_GlobalUniqueSources,
           processImage3D(buffer);
        else if (startswith("essioutput", buffer))
           processESSI3D(buffer);
+       else if (startswith("asdfoutput", buffer))
+          processASDFOutput(buffer);
        else if (startswith("boundary_conditions", buffer))
          processBoundaryConditions(buffer);
        //       else if (startswith("supergrid", buffer))
@@ -3721,6 +3723,41 @@ void EW::processImage3D( char* buffer )
  			       tStart, filePrefix, mode, use_double );
       addImage3D( im3 );
    }
+}
+
+void EW::processASDFOutput( char* buffer )
+{
+   string filePrefix="asdfoutput";
+   char* token = strtok(buffer, " \t");
+   CHECK_INPUT(strcmp("asdfoutput", token) == 0, "ERROR: Not an asdfoutput line...: " << token );
+
+   token = strtok(NULL, " \t");
+   string err = "asdfoutput Error: ";
+   while (token != NULL)
+   {
+     // while there are tokens in the string still
+      if (startswith("#", token) || startswith(" ", buffer))
+         // Ignore commented lines and lines with just a space.
+         break;
+      else if (startswith("file=", token))
+      {
+         token += 5; // skip file=
+         filePrefix = token;
+      }
+      else
+      {
+          badOption("asdfoutput", token);
+      }
+      token = strtok(NULL, " \t");
+   }
+
+   ASDFOutput* asdf = new ASDFOutput( this, filePrefix );
+#ifdef USE_ASDF
+   mASDFs.push_back(asdf);
+#else
+   cout << "ERROR: asdfoutput requested but not compiled with asdf=yes!" << endl;
+   MPI_Abort(MPI_COMM_WORLD, 1);
+#endif
 }
 
 //-----------------------------------------------------------------------

@@ -51,6 +51,7 @@
 #include "Image.h"
 #include "Image3D.h"
 #include "ESSI3D.h"
+#include "ASDFOutput.h"
 
 #include "boundaryConditionTypes.h"
 #include "ForcingTwilight.h"
@@ -129,6 +130,7 @@ void processFileIO(char* buffer);
 void processImage(char* buffer);
 void processImage3D(char* buffer);
 void processESSI3D(char* buffer);
+void processASDFOutput(char* buffer);
 void deprecatedImageMode(int value, const char* name) const;
 void processTestPointSource(char* buffer);
 void processTestRayleigh(char* buffer);
@@ -377,6 +379,7 @@ void checkTopo(Sarray& field);
 void addImage(Image* i);
 void addImage3D(Image3D* i);
 void addESSI3D(ESSI3D* i);
+void writeTimeSeries(vector<TimeSeries*> & a_GlobalTimeSeries);
 void setIO_timing(bool iotiming);
 void setParallel_IO(bool pfs, int nwriters);
 
@@ -1414,6 +1417,7 @@ float mSACFileErrorTolerance;
 vector<Image*> mImageFiles;
 vector<Image3D*> mImage3DFiles;
 vector<ESSI3D*> mESSI3DFiles;
+vector<ASDFOutput*> mASDFs;
 bool m_iotiming;
 
 // time data

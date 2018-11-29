@@ -7518,3 +7518,22 @@ void EW::sort_grid_point_sources( vector<GridPointSource*>& point_sources,
    //	    m_point_sources[i]->m_j0 << " " << 
    //	    m_point_sources[i]->m_k0 << std::endl;
 }
+
+//-----------------------------------------------------------------------
+void EW::writeTimeSeries(vector<TimeSeries*> & a_GlobalTimeSeries)
+{
+  bool use_asdf = (mASDFs.size() > 0);
+  if (use_asdf)
+  {
+    // Use the ASDF format to write
+    // FIXME - ask Anders if he wants more than one
+    mASDFs[0]->writeASDF(a_GlobalTimeSeries);
+  }
+  else // Just write the time series as you normally would
+  {
+    for (int ts=0; ts<a_GlobalTimeSeries.size(); ts++)
+    {
+      a_GlobalTimeSeries[ts]->writeFile();
+    }
+  }
+}
