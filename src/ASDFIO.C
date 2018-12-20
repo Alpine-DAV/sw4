@@ -37,7 +37,7 @@
 #include <cstdlib>
 #include <unistd.h>
 
-#include "ASDFOutput.h"
+#include "ASDFIO.h"
 #include "EW.h"
 
 #ifdef USE_ASDF
@@ -47,13 +47,13 @@
 
 using namespace std;
 
-ASDFOutput::ASDFOutput( EW* a_ew, std::string fileName):
+ASDFIO::ASDFIO( EW* a_ew, std::string fileName):
   m_ew(a_ew),
   m_fileName(fileName)
 {
 }
 
-void ASDFOutput::writeASDF( vector<TimeSeries*>& a_TimeSeries)
+void ASDFIO::writeASDF( vector<TimeSeries*>& a_TimeSeries)
 {
 #ifdef USE_ASDF
   cout << "Writing ASDF file to: " << m_fileName << endl;

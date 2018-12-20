@@ -30,8 +30,8 @@
 // # You should have received a copy of the GNU General Public License
 // # along with this program; if not, write to the Free Software
 // # Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA 
-#ifndef ASDFOUTPUT_H
-#define ASDFOUTPUT_H
+#ifndef ASDFIO_H
+#define ASDFIO_H
 
 #include "sw4.h"
 
@@ -42,11 +42,11 @@ class Filter;
 
 using namespace std;
 
-class ASDFOutput{
+class ASDFIO{
 
 public:
 
-ASDFOutput( EW* a_ew, std::string fileName); 
+ASDFIO( EW* a_ew, std::string fileName); 
 
 void writeASDF( vector<TimeSeries*>& a_TimeSeries);
 
@@ -119,7 +119,7 @@ int m_grid0;
 #endif
 
 private:   
-  ASDFOutput();
+  ASDFIO();
 
 // pointer to EW object
   EW * m_ew;
