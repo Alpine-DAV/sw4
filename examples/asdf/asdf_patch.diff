@@ -1,0 +1,48 @@
+diff --git a/inc/ASDF_write.h b/inc/ASDF_write.h
+index 3fe5538..90bc70a 100644
+--- a/inc/ASDF_write.h
++++ b/inc/ASDF_write.h
+@@ -193,7 +193,7 @@ hid_t ASDF_define_waveform(hid_t loc_id, int nsamples,
+ herr_t ASDF_define_waveforms(hid_t loc_id, int num_waveforms, int nsamples,
+                              long long int start_time, double sampling_rate,
+                              char *event_name, char **waveform_names,
+-                             int *data_id);
++                             hid_t *data_id);
+ 
+ /**
+  * @brief Write the station xml in data_id
+diff --git a/src/ASDF_f.c b/src/ASDF_f.c
+index e82edbc..0c3c323 100644
+--- a/src/ASDF_f.c
++++ b/src/ASDF_f.c
+@@ -90,7 +90,7 @@ void asdf_define_station_xml_f_(hid_t *group_id, int *StationXML_length,
+ void asdf_define_waveform_f_(hid_t *loc_id, int *nsamples,
+                           long long int *start_time, double *sampling_rate,
+                           char *event_name, char *waveform_name,
+-                          int *data_id) {
++                          hid_t *data_id) {
+   *data_id = ASDF_define_waveform(*loc_id, *nsamples, *start_time,
+                                   *sampling_rate, event_name, waveform_name);
+ }
+@@ -99,7 +99,7 @@ void asdf_define_waveform_f_(hid_t *loc_id, int *nsamples,
+ void asdf_define_waveforms_f_(hid_t *loc_id, int *num_waveforms, int *nsamples,
+                               long long int *start_time, double *sampling_rate,
+                               char *event_name, char **waveform_names,
+-                              int *data_id, int *err) {
++                              hid_t *data_id, int *err) {
+   *err = ASDF_define_waveforms(*loc_id, *num_waveforms, *nsamples,
+                                *start_time, *sampling_rate,
+                                event_name, waveform_names,
+diff --git a/src/ASDF_write.c b/src/ASDF_write.c
+index 11b36b5..458fb69 100644
+--- a/src/ASDF_write.c
++++ b/src/ASDF_write.c
+@@ -298,7 +298,7 @@ hid_t ASDF_define_waveform(hid_t loc_id, int nsamples,
+ herr_t ASDF_define_waveforms(hid_t loc_id, int num_waveforms, int nsamples,
+                             long long int start_time, double sampling_rate,
+                             char *event_name, char **waveform_names,
+-                            int *data_id) {
++                            hid_t *data_id) {
+   int i;
+   char char_sampling_rate[10];
+   char char_start_time[10];
