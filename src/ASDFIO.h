@@ -49,6 +49,7 @@ public:
 ASDFIO( EW* a_ew, std::string fileName); 
 
 void writeASDF( vector<TimeSeries*>& a_TimeSeries);
+void readASDF( vector<TimeSeries*>& a_TimeSeries);
 
 #if 0
 // support for derived quantities of the time derivative are not yet implemented

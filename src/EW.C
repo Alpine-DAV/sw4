@@ -7528,6 +7528,7 @@ void EW::writeTimeSeries(vector<TimeSeries*> & a_GlobalTimeSeries)
     // Use the ASDF format to write
     // FIXME - ask Anders if he wants more than one
     mASDFs[0]->writeASDF(a_GlobalTimeSeries);
+    mASDFs[0]->readASDF(a_GlobalTimeSeries);
   }
   else // Just write the time series as you normally would
   {
