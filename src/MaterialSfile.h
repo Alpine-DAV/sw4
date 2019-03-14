@@ -29,8 +29,8 @@
 // # You should have received a copy of the GNU General Public License
 // # along with this program; if not, write to the Free Software
 // # Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA 
-#ifndef MATERIALRFILE_FILE
-#define MATERIALRFILE_FILE
+#ifndef MATERIALSFILE_FILE
+#define MATERIALSFILE_FILE
 
 #include <string>
 
@@ -41,15 +41,17 @@ class EW;
 
 using namespace std;
 
-class MaterialRfile : public MaterialData
+class MaterialSfile : public MaterialData
 {
  public:
    
-   MaterialRfile( EW * a_ew,
+   MaterialSfile( EW * a_ew,
 		  const std::string file,
-		  const std::string directory, int bufsize );
+		  const std::string directory, 
+      bool read_hdf5, bool write_hdf5,
+      int horizontalInterval, vector<double> vec_depths);
 
-  ~MaterialRfile();
+  ~MaterialSfile();
 
   void set_material_properties(std::vector<Sarray> & rho, 
 			       std::vector<Sarray> & cs,
@@ -58,6 +60,13 @@ class MaterialRfile : public MaterialData
 			       std::vector<Sarray> & xip);
 
   bool use_attenuation() {return m_use_attenuation;}
+  bool check_write_hdf5() {return m_write_hdf5;}
+  static void read_topo(const std::string &file, const std::string &path, 
+      EW& ew, Sarray& gridElev, float_sw4& lon0, float_sw4& lat0, 
+      float_sw4& azim, float_sw4& hh);
+  void read_materials();
+  void write_sfile(MaterialRfile& rfile);
+  int horizontal_interval() {return m_horizontalInterval;}
   //  int get_material_pt( double x, double y, double z, double& rho, double& cs, double& cp,
   //		       double& qs, double& qp );
 
@@ -70,7 +79,7 @@ class MaterialRfile : public MaterialData
       && m_zminloc <= z && z <= m_zmaxloc;
   }
 
-   void read_rfile( );
+   void read_sfile( );
    void fill_in_fluids( );
    int io_processor( );
    void material_check( bool water );
@@ -80,6 +89,9 @@ class MaterialRfile : public MaterialData
    std::string m_model_file, m_model_dir;
 
    bool m_use_attenuation;
+   bool m_read_hdf5;
+   bool m_write_hdf5;
+   int m_horizontalInterval;
 
    int m_npatches;
    // Index range of patch in file coordinate system
@@ -92,11 +104,12 @@ class MaterialRfile : public MaterialData
    // xminloc, xmaxloc, etc. is the bounding box for the set of data patches in this processor.
    float_sw4 m_xminloc, m_xmaxloc, m_yminloc, m_ymaxloc, m_zminloc, m_zmaxloc;
    bool m_outside;
-   int m_bufsize;
 
 // 3-dimensional Sarrays
    vector<Sarray> mMaterial;
+   vector<Sarray> mInterface;
    vector<bool> m_isempty;
+   vector<double> m_vec_depths;
    //   int m_nlat, m_nlon, m_nmaxdepth, m_nx, m_ny;
    //   int m_nstenc;
    //   double m_h, m_dlon, m_dlat;

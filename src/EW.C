@@ -6200,6 +6200,8 @@ void EW::extractTopographyFromEfile(std::string a_topoFileName, std::string a_to
 //-----------------------------------------------------------------------
 void EW::extractTopographyFromRfile( std::string a_topoFileName )
 {
+  int verbose = mVerbose;
+  mVerbose = 2;
    std::string rname ="EW::extractTopographyFromRfile";
    Sarray gridElev;
    int fd=open( a_topoFileName.c_str(), O_RDONLY );
@@ -6435,7 +6437,7 @@ void EW::extractTopographyFromRfile( std::string a_topoFileName )
 	 gridElev.assign(data);
 
 // test
-	 if (m_myRank==0 && mVerbose >= 3)
+	 if (m_myRank==0 && mVerbose >= 2)
 	 {
 	   printf("1st topo (float) data=%e, gridElev(1,1,1)=%e\n", data[0], gridElev(1,1,1));
 	   printf("last topo (float) data=%e, gridElev(ni,nj,1)=%e\n", data[nitop*njtop-1], gridElev(nitop,njtop,1));
@@ -6460,7 +6462,7 @@ void EW::extractTopographyFromRfile( std::string a_topoFileName )
       computeCartesianCoord( x0, y0, lon0, lat0 );
       
 // test
-      if (m_myRank==0 && mVerbose >= 3)
+      if (m_myRank==0 && mVerbose >= 2)
       {
 	printf("mat-lon0=%e mat-lat0=%e, comp-x0=%e, commp-y0=%e\n", lon0, lat0, x0, y0);
       }
@@ -6575,7 +6577,7 @@ void EW::extractTopographyFromRfile( std::string a_topoFileName )
       }// end for i
       
 // test
-      if (m_myRank==0 && mVerbose>=3)
+      if (m_myRank==0 && mVerbose>=2)
       {
 	printf("Topo variation on comp grid: max=%e min=%e\n", topomax, topomin);
       }
@@ -6583,6 +6585,146 @@ void EW::extractTopographyFromRfile( std::string a_topoFileName )
    }
    else
       cout << rname << " error could not open file " << a_topoFileName << endl;
+  mVerbose = verbose;
+}
+
+//-----------------------------------------------------------------------
+void EW::extractTopographyFromSfile( std::string a_topoFileName )
+{
+  int verbosity = mVerbose;
+  mVerbose = 2;
+  std::string rname ="EW::extractTopographyFromSfile";
+  Sarray gridElev;
+  double lon0, lat0, azim, hh;
+  MaterialSfile::read_topo(a_topoFileName, getPath(), *this, gridElev,
+     lon0, lat0, azim, hh);
+  int nitop = gridElev.m_ie;
+  int njtop = gridElev.m_je;
+
+  double x0, y0; // Origin on grid file
+  computeCartesianCoord( x0, y0, lon0, lat0 );
+  
+// test
+  if (m_myRank==0 && mVerbose >= 2)
+  {
+printf("mat-lon0=%e mat-lat0=%e, comp-x0=%e, commp-y0=%e\n", lon0, lat0, x0, y0);
+  }
+  
+    // Topography read, next interpolate to the computational grid
+      int topLevel=mNumberOfGrids-1;
+
+      float_sw4 topomax=-1e30, topomin=1e30;
+#pragma omp parallel for reduction(max:topomax) reduction(min:topomin)      
+      for (int i = m_iStart[topLevel]; i <= m_iEnd[topLevel]; ++i)
+      {
+	for (int j = m_jStart[topLevel]; j <= m_jEnd[topLevel]; ++j)
+	{
+	  float_sw4 x = (i-1)*mGridSize[topLevel];
+	  float_sw4 y = (j-1)*mGridSize[topLevel];
+	  int i0 = static_cast<int>( trunc( 1 + (x-x0)/hh ));
+	  int j0 = static_cast<int>( trunc( 1 + (y-y0)/hh ));
+// test
+	  float_sw4 xmat0 = (i0-1)*hh, ymat0 = (j0-1)*hh;
+	  float_sw4 xmatx = x - x0, ymaty = y - y0;
+	  
+	  if (mVerbose>=3)
+	  {
+	    if (xmatx<xmat0 || xmatx>xmat0+hh) printf("WARNING: i0=%i is out of bounds for x=%e, xmatx=%e\n", i0, x, xmatx);
+	    if (ymaty<ymat0 || ymaty>ymat0+hh) printf("WARNING: i0=%i is out of bounds for y=%e, ymaty=%e\n", i0, y, ymaty);
+	  }
+	  
+// end test
+
+	  bool extrapol=false;
+	  if( i0 < -1 )
+	  {
+	    extrapol = true;
+	    i0 = 1;
+	  }
+	  else if( i0 < 2 )
+	    i0 = 2;
+	    
+	  if( i0 > nitop+1 )
+	  {
+	    extrapol = true;
+	    i0 = nitop;
+	  }
+	  else if( i0 > nitop-2 )
+	    i0 = nitop-2;
+	    
+	  if( j0 < -1 )
+	  {
+	    extrapol = true;
+	    j0 = 1;
+	  }
+	  else if( j0 < 2 )
+	    j0 = 2;
+
+	  if( j0 > njtop+1 )
+	  {
+	    extrapol = true;
+	    j0 = njtop;
+	  }
+	  else if( j0 > njtop-2 )
+	    j0 = njtop-2;
+
+	  if( !extrapol )
+	  {
+	    float_sw4 q = (x - x0 - (i0-1)*hh)/hh;
+	    float_sw4 r = (y - y0 - (j0-1)*hh)/hh;
+	    float_sw4 Qim1, Qi, Qip1, Qip2, Rjm1, Rj, Rjp1, Rjp2, tjm1, tj, tjp1, tjp2;
+	    Qim1 = (q)*(q-1)*(q-2)/(-6.);
+	    Qi   = (q+1)*(q-1)*(q-2)/(2.);
+	    Qip1 = (q+1)*(q)*(q-2)/(-2.);
+	    Qip2 = (q+1)*(q)*(q-1)/(6.);
+
+	    Rjm1 = (r)*(r-1)*(r-2)/(-6.);
+	    Rj   = (r+1)*(r-1)*(r-2)/(2.);
+	    Rjp1 = (r+1)*(r)*(r-2)/(-2.);
+	    Rjp2 = (r+1)*(r)*(r-1)/(6.);
+
+// test
+	    if (mVerbose>=3)
+	    {
+	      if (i0<2 || i0>nitop-2) printf("WARNING: topo interp out of bounds i0=%i, nitop=%i\n", i0, nitop);
+	      if (j0<2 || j0>njtop-2) printf("WARNING: topo interp out of bounds j0=%i, njtop=%i\n", j0, njtop);
+	    }
+	    
+	    tjm1 = Qim1*gridElev(i0-1,j0-1,1) +    Qi*gridElev(i0,  j0-1,1)
+	      +  Qip1*gridElev(i0+1,j0-1,1) +  Qip2*gridElev(i0+2,j0-1,1);
+	    tj   = Qim1*gridElev(i0-1,j0,  1) +    Qi*gridElev(i0,  j0,  1)
+	      +  Qip1*gridElev(i0+1,j0,  1) +  Qip2*gridElev(i0+2,j0,  1);
+	    tjp1 = Qim1*gridElev(i0-1,j0+1,1) +    Qi*gridElev(i0,  j0+1,1)
+	      +  Qip1*gridElev(i0+1,j0+1,1) +  Qip2*gridElev(i0+2,j0+1,1);
+	    tjp2 = Qim1*gridElev(i0-1,j0+2,1) +    Qi*gridElev(i0,  j0+2,1)
+	      +  Qip1*gridElev(i0+1,j0+2,1) +  Qip2*gridElev(i0+2,j0+2,1);
+	    mTopo(i,j,1) = Rjm1*tjm1 + Rj*tj + Rjp1*tjp1 + Rjp2*tjp2;
+	  }
+	  else
+	  {
+// tmp
+	    if (mVerbose>=3)
+	    {
+	      printf("INFO: topo extrapolated for i=%i, j=%i, x=%e, y=%e, i0=%i, j0=%i\n", i, j, x, y, i0, j0);
+	    }
+	    
+	    mTopo(i,j,1) = gridElev(i0,j0,1);
+	  }
+	  
+// test
+	  if (mTopo(i,j,1)>topomax) topomax=mTopo(i,j,1);
+	  if (mTopo(i,j,1)<topomin) topomin=mTopo(i,j,1);
+	    
+	}// end for j
+      }// end for i
+      
+// test
+      if (m_myRank==0 && mVerbose>=2)
+      {
+	printf("Topo variation on comp grid: max=%e min=%e\n", topomax, topomin);
+      }
+
+  mVerbose = verbosity;
 }
 
 //-----------------------------------------------------------------------
@@ -7398,6 +7540,16 @@ void EW::sort_grid_point_sources( vector<GridPointSource*>& point_sources,
    //	    m_point_sources[i]->m_k0 << std::endl;
 }
 
+//-----------------------------------------------------------------------
+void EW::writeTimeSeries(vector<TimeSeries*> & a_GlobalTimeSeries)
+{
+  for (int ts=0; ts<a_GlobalTimeSeries.size(); ts++)
+  {
+    a_GlobalTimeSeries[ts]->writeFile();
+  }
+}
+
+//-----------------------------------------------------------------------
 #include "AllDims.h"
 AllDims* EW::get_fine_alldimobject( )
 {

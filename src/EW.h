@@ -61,6 +61,8 @@
 #include "TestRayleighWave.h"
 
 #include "MaterialData.h"
+#include "MaterialRfile.h"
+#include "MaterialSfile.h"
 #include "AnisotropicMaterial.h"
 #include "EtreeFile.h"
 #include "RandomizedMaterial.h"
@@ -154,6 +156,7 @@ void processMaterialEtree(char* buffer);
 void processMaterialVimaterial(char* buffer);
 void processMaterialInvtest(char* buffer);
 void processMaterialRfile(char* buffer);
+void processMaterialSfile(char* buffer);
 void processAnisotropicMaterialBlock( char* buffer, int & ablockCount );
 void processReceiver(char* buffer, vector<vector<TimeSeries*> > & a_GlobalTimeSeries);
 void processObservation(char* buffer, vector<vector<TimeSeries*> > & a_GlobalTimeSeries);
@@ -388,6 +391,7 @@ void checkTopo(Sarray& field);
 void addImage(Image* i);
 void addImage3D(Image3D* i);
 void addESSI3D(ESSI3D* i);
+void writeTimeSeries(vector<TimeSeries*> & a_GlobalTimeSeries);
 void setIO_timing(bool iotiming);
 void setParallel_IO(bool pfs, int nwriters);
 
@@ -399,6 +403,7 @@ void setEtreeFile(EtreeFile* efile);
 void extractTopographyFromEfile(string a_topoFileName, string a_topoExtFileName, string a_QueryType,
                                 float_sw4 a_EFileResolution);
 void extractTopographyFromRfile( std::string a_topoFileName );
+void extractTopographyFromSfile( std::string a_topoFileName );
 
 void smoothTopography(int maxIter);
 
@@ -564,7 +569,7 @@ void get_gridgen_info( int& order, float_sw4& zetaBreak ) const;
 // functions from the old FileInput class
 void cleanUpRefinementLevels();
 
-enum InputMode { UNDEFINED, Efile, GaussianHill, GridFile, CartesianGrid, TopoImage, Rfile};
+enum InputMode { UNDEFINED, Efile, GaussianHill, GridFile, CartesianGrid, TopoImage, Rfile, Sfile};
 
 // access functions needed by the Image (and perhaps other) classes
 int getNumberOfCartesianGrids(){return mNumberOfCartesianGrids;};
@@ -1291,6 +1296,9 @@ vector<Sarray> mRho;
 vector<Sarray> mC; // Anisotropic material parameters
 Sarray mCcurv; // Anisotropic material with metric (on curvilinear grid).
 
+// attenuation variables (only allocated if attenuation is enabled)
+vector<Sarray> mQp, mQs;
+
 // Store coefficeints needed for Mesh refinement
 vector<Sarray> m_Morf, m_Mlrf, m_Mufs, m_Mlfs, m_Morc, m_Mlrc, m_Mucs, m_Mlcs;
 
@@ -1391,7 +1399,6 @@ int m_number_mechanisms;
 float_sw4 m_velo_omega, m_min_omega, m_max_omega, m_att_max_frequency, m_att_ppw;
 float_sw4 m_qmultiplier;
 
-vector<Sarray> mQp, mQs;
 vector<Sarray*> mMuVE, mLambdaVE;
 // relaxation frequencies
 vector<float_sw4> mOmegaVE;
@@ -1449,7 +1456,7 @@ float mSACFileErrorTolerance;
 // Image file info
 vector<Image*> mImageFiles; 
 vector<Image3D*> mImage3DFiles;
-vector<ESSI3D*> mESSI3DFiles; 
+vector<ESSI3D*> mESSI3DFiles;
 bool m_iotiming;
 
 // time data

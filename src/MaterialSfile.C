@@ -42,7 +42,7 @@
 #include <math.h>
 #include <fcntl.h>
 #include "EW.h"
-#include "MaterialRfile.h"
+#include "MaterialSfile.h"
 #include "SfileHDF5.h"
 #include "Byteswapper.h"
 
@@ -50,24 +50,53 @@ using namespace std;
 
 
 //-----------------------------------------------------------------------
-MaterialRfile::MaterialRfile( EW* a_ew, const string a_file,
-			      const string a_directory, int a_bufsize ):
+MaterialSfile::MaterialSfile( EW* a_ew, const string a_file,
+			      const string a_directory, bool read_hdf5, bool write_hdf5,
+            int horizontalInterval, vector<double> vec_depths):
    mEW(a_ew),
    m_model_file(a_file),
-   m_model_dir(a_directory)
+   m_model_dir(a_directory),
+   m_read_hdf5(read_hdf5),
+   m_write_hdf5(write_hdf5),
+   m_horizontalInterval(horizontalInterval)
 {
    mCoversAllPoints = false;
-   m_bufsize = a_bufsize;
-   read_rfile();
+   // Check that the depths make sense
+   float_sw4 tol = 1e-5;
+   float_sw4 depth = 0; // previous depth value, for ascending order
+   for (int d=0; d < vec_depths.size(); ++d)
+   {
+     ASSERT(vec_depths[d] >= (depth+tol));
+     depth = vec_depths[d];
+     m_vec_depths.push_back(vec_depths[d]);
+   }
+   if (m_read_hdf5)
+     read_sfile();
 }
 
 //-----------------------------------------------------------------------
-void MaterialRfile::set_material_properties(std::vector<Sarray> & rho, 
+MaterialSfile::~MaterialSfile()
+{
+  /*
+  if (mInterface.size() != 0)
+    for (int i=0; i < mInterface.size(); i++)
+      if (mInterface[i] != NULL)
+        delete mInterface[i];
+  if (mMaterial.size() != 0)
+    for (int i=0; i < mMaterial.size(); i++)
+      if (mMaterial[i] != NULL)
+        delete mMaterial[i];
+  */
+}
+
+//-----------------------------------------------------------------------
+void MaterialSfile::set_material_properties(std::vector<Sarray> & rho, 
 			       std::vector<Sarray> & cs,
 			       std::vector<Sarray> & cp, 
 			       std::vector<Sarray> & xis, 
 			       std::vector<Sarray> & xip )
 {
+#if 0
 // Assume attenuation arrays defined on all grids if they are defined on grid zero.
    bool use_q = m_use_attenuation && xis[0].is_defined() && xip[0].is_defined();
    size_t outside=0, material=0;
@@ -281,7 +310,7 @@ void MaterialRfile::set_material_properties(std::vector<Sarray> & rho,
    if (mEW->getRank() == 0)
       //      cout << endl 
       //           << "--------------------------------------------------------------\n"
-      //           << "Rfile Initialized Node Types: " << endl
+      //           << "Sfile Initialized Node Types: " << endl
       //           << "   Material:        " << materialSum << endl
       //           << endl
       //           << "*Outside Domain:    " << outsideSum << endl
@@ -289,42 +318,15 @@ void MaterialRfile::set_material_properties(std::vector<Sarray> & rho,
       //           << "--------------------------------------------------------------\n"
       //           << endl;
       cout << endl
-	   << "rfile command: outside = " << outsideSum << ", material = " << materialSum << endl;
+	   << "sfile command: outside = " << outsideSum << ", material = " << materialSum << endl;
+#endif
 }
 
 
 //-----------------------------------------------------------------------
-int MaterialRfile::io_processor( )
+void MaterialSfile::read_sfile()
 {
-   // Find out if this processor will participate in the I/O
-   int iread=0, nproc, myid;
-   int nrwriters = mEW->getNumberOfWritersPFS();
-   MPI_Comm_size(MPI_COMM_WORLD, &nproc);
-   MPI_Comm_rank(MPI_COMM_WORLD, &myid);
-   if( nrwriters > nproc )
-      nrwriters = nproc;
-   int q, r;
-   if( nproc == 1 || nrwriters == 1 )
-   {
-      q = 0;
-      r = 0;
-   }
-   else
-   {
-      q = (nproc-1)/(nrwriters-1);
-      //      r = (nproc-1) % (nrwriters-1);
-      r = 0;
-   }
-   for( int w=0 ; w < nrwriters ; w++ )
-      if( q*w+r == myid )
-	 iread = 1;
-   return iread;
-}
-
-//-----------------------------------------------------------------------
-void MaterialRfile::read_rfile( )
-{
-   string rname = "MaterialRfile::read_rfile";
+   string rname = "MaterialSfile::read_sfile";
 
   // Figure out bounding box in this processor
    float_sw4 xmin=1e38, xmax=-1e38, ymin=1e38, ymax=-1e38, zmin=1e38, zmax=-1e38;
@@ -366,108 +368,10 @@ void MaterialRfile::read_rfile( )
    m_zminloc = zmin;
    m_zmaxloc = zmax;
 
-  // Read rfile header. Translate each patch into SW4 Cartesian coordinate system
-   string fname = m_model_dir + "/" + m_model_file;
-   int fd = open( fname.c_str(), O_RDONLY );
-   if( fd != -1 )
-   {
-      int magic;
-      size_t nr = read(fd,&magic,sizeof(int));
-      if( nr != sizeof(int) )
-      {
-	 cout << rname << " Error reading magic number, nr= " << nr
-	      << "bytes read" << endl;
-         close(fd);
-	 return;
-      }
+   // Read everything from the sfile
+   read_materials();
 
-      Byteswapper bswap;
-      int onesw=1;
-      bswap.byte_rev( &onesw, 1, "int" );
-      bool swapbytes;
-      if( magic == 1 )
-	 swapbytes = false;
-      else if( magic == onesw )
-	 swapbytes = true;
-      else
-      {
-	 cout << rname << "error could not determine byte order on file "
-	      << fname << " magic number is " << magic << endl;
-         close(fd);
-	 return;
-      }
-
-      // ---------- precision
-      int prec = 0;
-      nr = read(fd,&prec,sizeof(int));
-      if( nr != sizeof(int) )
-      {
-	 cout << rname << " Error reading prec, nr= " << nr
-	      << "bytes read" << endl;
-         close(fd);
-	 return;
-      }
-      if( swapbytes )
-	 bswap.byte_rev( &prec, 1, "int" );
-      int flsize=4;
-      if( prec == 8 )
-	 flsize = sizeof(double);
-      else if( prec == 4 )
-	 flsize = sizeof(float);
-
-      // ---------- attenuation on file ?
-      int att;
-      nr = read(fd,&att,sizeof(int));
-      if( nr != sizeof(int) )
-      {
-	 cout << rname << " Error reading att, nr= " << nr
-	      << "bytes read" << endl;
-         close(fd);
-	 return;
-      }
-      if( swapbytes )
-	 bswap.byte_rev( &att, 1, "int" );
-      m_use_attenuation = (att==1);
-
-      // ---------- azimuth on file
-      double alpha;
-      nr = read(fd,&alpha,sizeof(double));
-      if( nr != sizeof(double) )
-      {
-	 cout << rname << " Error reading alpha, nr= " << nr
-	      << "bytes read" << endl;
-         close(fd);
-	 return;
-      }
-      if( swapbytes )
-	 bswap.byte_rev( &alpha, 1, "double" );
-      CHECK_INPUT( fabs(alpha-mEW->getGridAzimuth()) < 1e-6, "ERROR: Rfile azimuth must be equal to coordinate system azimuth" <<
-		   " azimuth on rfile = " << alpha << " azimuth of coordinate sytem = " << mEW->getGridAzimuth() );
-
-      // ---------- origin on file
-      double lon0, lat0;
-      nr = read( fd, &lon0, sizeof(double));
-      if( nr != sizeof(double) )
-      {
-	 cout << rname << " Error reading lon0, nr= " << nr
-	      << "bytes read" << endl;
-         close(fd);
-	 return;
-      }
-      if( swapbytes )
-	 bswap.byte_rev( &lon0, 1, "double" );
-
-      nr = read( fd, &lat0, sizeof(double));
-      if( nr != sizeof(double) )
-      {
-	 cout << rname << " Error reading lat0, nr= " << nr
-	      << "bytes read" << endl;
-         close(fd);
-	 return;
-      }
-      if( swapbytes )
-	 bswap.byte_rev( &lat0, 1, "double" );
-      mEW->computeCartesianCoord( m_x0, m_y0, lon0, lat0 );
+#if 0
 
       // ---------- length of projection string
       int len;
@@ -500,7 +404,7 @@ void MaterialRfile::read_rfile( )
 // test
       if (mEW->getRank()==0 && mEW->getVerbosity() >= 2)
       {
-	printf("Rfile header: magic=%i, prec=%i, att=%i\n", magic, prec, att);
+	printf("Sfile header: magic=%i, prec=%i, att=%i\n", magic, prec, att);
 	printf("              azimuth=%e, lon0=%e, lat0=%e\n", alpha, lon0, lat0);
 	printf("              pstring-len=%i, pstr='%s'\n", len, "not implemented");
 	printf("              nblocks=%i\n", m_npatches);
@@ -559,7 +463,7 @@ void MaterialRfile::read_rfile( )
 	 }
       }
 
-      // Intersect local grid with grid on rfile, assume all patches have the
+      // Intersect local grid with grid on sfile, assume all patches have the
       // same x- and y- extent. Assume patch=0 is topography, patches =1,..npatches-1
       // are ordered from top to bottom.
       float_sw4 xminrf = m_x0,    xmaxrf = m_x0+(m_ni[0]-1)*m_hh[0];
@@ -758,11 +662,13 @@ void MaterialRfile::read_rfile( )
       //      cout << "END DEBUG -----" << endl;
    }
    else
-      cout << "MaterialRfile::read_rfile, error could not open file " << fname << endl;
+      cout << "MaterialSfile::read_sfile, error could not open file " << fname << endl;
+#endif
 }
 
+#if 0
 //-----------------------------------------------------------------------
-void MaterialRfile::fill_in_fluids()
+void MaterialSfile::fill_in_fluids()
 {
 // Start from p=1, p=0 is the topography.
 //   for( int p=1 ; p < m_npatches ; p++ )
@@ -842,7 +748,7 @@ void MaterialRfile::fill_in_fluids()
 }
 
 //-----------------------------------------------------------------------
-void MaterialRfile::material_check( bool water )
+void MaterialSfile::material_check( bool water )
 {
    bool printsmallcpcs=false;
    for( int p=1 ; p < m_npatches ; p++ )
@@ -902,4 +808,46 @@ void MaterialRfile::material_check( bool water )
 	 cout << "    rho   min and max " << cminstot[3] << " " << cmaxstot[3] << endl;
       }
    }
+}
+#endif
+
+//-----------------------------------------------------------------------
+void MaterialSfile::read_topo(const std::string &file, 
+    const std::string &path, EW& ew, Sarray& gridElev,
+    float_sw4& lon0, float_sw4& lat0, float_sw4& azim, float_sw4& hh)
+{
+#ifdef USE_HDF5
+   // Don't look in results path
+   // string filename = path + "/" + file;
+   SfileHDF5::read_sfile_topo(file, ew, gridElev, lon0, lat0, azim, hh);
+#else
+	 cout << "WARNING: sw4 not compiled with hdf5=yes, " <<
+    "--> ignoring MaterialSfile::read_topo, no-op" << endl;
+#endif
+}
+
+//-----------------------------------------------------------------------
+void MaterialSfile::read_materials()
+{
+#ifdef USE_HDF5
+   string filename = m_model_dir + "/" + m_model_file;
+   SfileHDF5::read_sfile_material(filename, *mEW, *this, mMaterial, 
+      mInterface);
+
+#else
+	 cout << "WARNING: sw4 not compiled with hdf5=yes, " <<
+    "--> ignoring MaterialSfile::read_materials, no-op" << endl;
+#endif
+}
+
+//-----------------------------------------------------------------------
+void MaterialSfile::write_sfile(MaterialRfile& rfile)
+{
+#ifdef USE_HDF5
+   SfileHDF5::write_sfile(m_model_file, m_model_dir,
+       *mEW, rfile, m_vec_depths, m_horizontalInterval);
+#else
+	 cout << "WARNING: sw4 not compiled with hdf5=yes, " <<
+    "--> ignoring MaterialSfile::write_sfile, no-op" << endl;
+#endif
 }
