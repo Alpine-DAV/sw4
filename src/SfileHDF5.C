@@ -417,7 +417,6 @@ void SfileHDF5::calculate_patches(EW& ew, vector<float_sw4>& mr_depth,
      for (int b=0; b < pbrk.size(); ++b) // Add number of points
      {
        int gk = pbrk[b].ke-pbrk[b].kb; 
-       ASSERT(gk >= pbrk[b].vs); // At least 2 points
        float k = (gk+1)/pbrk[b].vs;
        nk += k; // rough number of vs
        if (b > 0) --nk; // Remove 1 point for overlap between grids
@@ -428,6 +427,8 @@ void SfileHDF5::calculate_patches(EW& ew, vector<float_sw4>& mr_depth,
              << ", k=" << k << ", in grid " << pbrk[b].g
              << ", index range (" << pbrk[b].kb << ", " << pbrk[b].ke 
              << "), hs = " << pbrk[b].hs << ", vs= " << pbrk[b].vs << endl;
+       // ASSERT(gk >= pbrk[b].vs); // Not necessary with interpolation?
+       ASSERT((gk+1) >= 2); // At least 2 points
      }
    }
 }
