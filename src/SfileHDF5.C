@@ -129,7 +129,7 @@ void SfileHDF5::read_sfile_topo(const std::string& filename, EW& ew,
  
    // Timers
    double time_end = MPI_Wtime();
-   if (debug && (myRank == 0))
+   if (myRank == 0)
       cout << "Sfile::read_sfile_topo, time to read topo file: " << time_end - time_start << " seconds." << endl;
    cout.flush();
 
@@ -174,6 +174,7 @@ void SfileHDF5::read_sfile_material(const std::string &filename,
    vector<int> patch_nk;
    float lonlataz[3];
    read_sfile_header(file_id, mpiprop_id, h, lonlataz, patch_nk);
+   ew.computeCartesianCoord(model.m_x0, model.m_y0, lonlataz[0], lonlataz[1]);
    int npatch = patch_nk.size();
    ASSERT(npatch > 0);
 
@@ -184,13 +185,35 @@ void SfileHDF5::read_sfile_material(const std::string &filename,
       intf[p] = &interfaces[p];
    read_sfile_interface_group(file_id, mpiprop_id, topoOnly, intf);
 
-   // TODO - implement pseudocode:
-   // - Read the material data into mMaterial
-   // - Create top/bottom interfaces for interpolation?
-   materials.resize(npatch+1);
-   read_sfile_material_group(file_id, mpiprop_id, materials);
+   // Create top/bottom interfaces for interpolation
+   int nvars = (model.use_attenuation()) ? 5 : 3;
+   float_sw4 bb[3][2];
+   calculate_grid_boundingbox(ew, bb); // finest curv domain
+   materials.resize(npatch);
+   vector<vector<int> > bbijk(npatch); // For each patch, same layout as bb
+   int nghost = ew.getNumberOfGhostPoints();
+   calculate_interpolation_patch(materials, nghost, bb, model.m_x0, model.m_y0, 
+       h, nvars, patch_nk);
 
-   // TODO - anything else after we've read them?
+   if (debug)
+   {
+     cout << "Rank " << myRank << " has interior points:" << endl;
+     char msg[1000];
+     for (int g=0; g < ew.getNumberOfGrids(); ++g)
+     {
+        sprintf(msg, "  grid %d: start [%d,%d,%d], end [%d,%d,%d]\n",
+           g, ew.m_iStartInt[g], ew.m_jStartInt[g], ew.m_kStartInt[g], 
+           ew.m_iEndInt[g], ew.m_jEndInt[g], ew.m_kEndInt[g]);
+        cout << msg;
+        cout.flush();
+     }
+   }
+
+   // Read the material data into materials Sarrays
+   // FIXME - DEBUG?
+   read_sfile_material_group(file_id, mpiprop_id, nghost, nvars, materials);
+
+   // TODO - anything else after we've read them? Min/max bounds?
 
    // Close file
    if (debug)
@@ -213,7 +236,7 @@ void SfileHDF5::read_sfile_material(const std::string &filename,
 
    // Timers
    double time_end = MPI_Wtime();
-   if (debug && (myRank == 0))
+   if (myRank == 0)
       cout << "Sfile::read_sfile_material, time to read material file: " 
          << time_end - time_start << " seconds." << endl;
    cout.flush();
@@ -237,6 +260,8 @@ void SfileHDF5::write_sfile(const std::string &file,
    MPI_Comm_rank(MPI_COMM_WORLD, &myRank);
 
    char msg[1000];
+   if (myRank == 0)
+      cout << "SfileHDF5::write_sfile - writing HDF5 sfile: " << file << endl;
    if (debug)
       cout << "Rank " << myRank << ", SfileHDF5::write_sfile" << endl;
    string filename = path + "/" + file;
@@ -317,8 +342,9 @@ void SfileHDF5::write_sfile(const std::string &file,
 
    // Timers
    double time_end = MPI_Wtime();
-   if (debug && (myRank == 0))
-      cout << "Sfile::write_sfile, time to write material file: " << time_end - time_start << " seconds." << endl;
+   if (myRank == 0)
+      cout << "SfileHDF5::write_sfile, time to write material file: " 
+        << time_end - time_start << " seconds." << endl;
    cout.flush();
 
 #endif // if USE_HDF5
@@ -567,7 +593,7 @@ void SfileHDF5::write_sfile_interfaces(hid_t file_id, hid_t mpiprop_id,
 
       // Modify dataset creation properties to enable chunking
       hid_t prop_id = H5Pcreate(H5P_DATASET_CREATE);
-      ierr = H5Pset_chunk(prop_id, z_dims, slice_dims);
+      // ierr = H5Pset_chunk(prop_id, z_dims, slice_dims);
       // Create dataset for z field
       hid_t dataspace_id = H5Screate_simple(z_dims, global_dims, NULL);
       char buff[100];
@@ -597,7 +623,7 @@ void SfileHDF5::write_sfile_interfaces(hid_t file_id, hid_t mpiprop_id,
       start[1] = (ew.m_jStartInt[g]-1)/hs + 1 - 1;
       if (debug)
       {
-         sprintf(msg, "Rank %d, selecting grid %d z hyperslab = %d %d, size [%d,%d] in [%d,%d] \n",
+         sprintf(msg, "Rank %d, selecting grid %d z hyperslab = [%d %d], size [%d,%d] in [%d,%d] \n",
                  myRank, g, (int)start[0], (int)start[1],
                  (int)slice_dims[0], (int)slice_dims[1],
                  (int)global_dims[0], (int)global_dims[1]);
@@ -688,9 +714,13 @@ void SfileHDF5::write_sfile_materials(hid_t file_id, hid_t mpiprop_id, EW& ew,
    // Write the material data for each grid
    hid_t group_id = H5Gcreate(file_id, "Material_model", H5P_DEFAULT, 
        H5P_DEFAULT, H5P_DEFAULT);
+   float Cs_min[npatch];
+   float Cs_max[npatch];
    // Material output on each patch
    for (int p=0; p < npatch; p++)
    {
+      Cs_min[p]=1e8;
+      Cs_max[p]=0;
       // NB: these are stored in order of g high to g low
       vector<sfile_breaks>& brks = patch_breaks[p];
       int nk = patch_nk[p];
@@ -727,14 +757,13 @@ void SfileHDF5::write_sfile_materials(hid_t file_id, hid_t mpiprop_id, EW& ew,
       global_dims[0] = (ew.m_global_nx[g]-1)/hs+1;
       global_dims[1] = (ew.m_global_ny[g]-1)/hs+1;
       global_dims[2] = nk;
-      hsize_t start[3]={-1,-1,-1};
 
       const char *field[] = {"Rho", "Cp", "Cs", "Qs", "Qp"};
       int nvars = (model.use_attenuation()) ? 5 : 3;
 
       // Modify dataset creation properties to enable chunking
       hid_t prop_id = H5Pcreate(H5P_DATASET_CREATE);
-      herr_t ierr = H5Pset_chunk(prop_id, dims, slice_dims);
+      // herr_t ierr = H5Pset_chunk(prop_id, dims, slice_dims);
       // Create the variables for this grid
       for (int c=0; c < nvars; c++)
       {
@@ -767,9 +796,19 @@ void SfileHDF5::write_sfile_materials(hid_t file_id, hid_t mpiprop_id, EW& ew,
         Sarray* z = (ew.m_topography_exists && (g==ngrids-1)) ? &(ew.mZ) : NULL;
         material_interpolate(h5_array, z_bot[p], z_top[p], 
             slice_dims, brk, z, ew.m_zmin[g], ew.mGridSize[g], 
+            Cs_min[p], Cs_max[p],
             ew.mRho[g], ew.mMu[g], ew.mLambda[g], ew.mQs[g], ew.mQp[g]);
         // Don't need this? koffset += (slice_dims[2]-1); // For overlap
       }
+
+      // TODO - calculate global Cs min/max with MPI
+
+      float Cs_min_glb[npatch], Cs_max_glb[npatch];
+      MPI_Reduce(Cs_min, Cs_min_glb, 4, MPI_FLOAT, MPI_MIN, 0, MPI_COMM_WORLD );
+      MPI_Reduce(Cs_max, Cs_max_glb, 4, MPI_FLOAT, MPI_MAX, 0, MPI_COMM_WORLD );
+      if (myRank == 0)
+        cout << "Material sfile patch " << p << " min Cs=" << Cs_min_glb[p] 
+          << ", max Cs=" << Cs_max_glb[p] << endl;
 
       // Do the hdf5 write in chunks
       // TODO - need to chunk!
@@ -780,15 +819,16 @@ void SfileHDF5::write_sfile_materials(hid_t file_id, hid_t mpiprop_id, EW& ew,
       {
         hid_t dataset_id = H5Dopen2(grid_id, field[v], H5P_DEFAULT);
         hid_t dataspace_id = H5Dget_space(dataset_id);
-        start[0] = 0;
-        start[1] = 0;
-        start[2] = 0;
+        hsize_t start[3]={-1,-1,-1};
+        start[0] = (ew.m_iStartInt[g]-1)/hs + 1 - 1;
+        start[1] = (ew.m_jStartInt[g]-1)/hs + 1 - 1;
+        start[2] = 0; // write all z values
         hid_t window_id = H5Screate_simple(dims, slice_dims, NULL);
         ierr = H5Sselect_hyperslab(dataspace_id, H5S_SELECT_SET, start, 
             NULL, slice_dims, NULL);
         if (debug)
         {
-           sprintf(msg, "Rank %d selecting %s for hyperslab = %d %d %d, size [%d,%d,%d] in [%d,%d,%d] \n",
+           sprintf(msg, "Rank %d selecting %s for hyperslab = [%d %d %d], size [%d,%d,%d] in [%d,%d,%d] \n",
               myRank, field[v], (int) start[0], (int) start[1], (int) start[2],
               (int) slice_dims[0], (int) slice_dims[1], (int) slice_dims[2],
               (int) global_dims[0], (int) global_dims[1], (int) global_dims[2]);
@@ -834,6 +874,7 @@ void SfileHDF5::write_sfile_materials(hid_t file_id, hid_t mpiprop_id, EW& ew,
 void SfileHDF5::material_interpolate(vector<float*>& h5_array,
     float* zbot, float* ztop, hsize_t (&slice_dims)[3],
     sfile_breaks& brk, Sarray* gridz, float zmin, float gridh,
+    float& Cs_min, float& Cs_max,
     Sarray& grho, Sarray& gmu, Sarray& glambda, Sarray& gqp, Sarray& gqs)
 {
   const bool topo = (gridz != NULL);
@@ -841,7 +882,7 @@ void SfileHDF5::material_interpolate(vector<float*>& h5_array,
   const int nk = slice_dims[2];
   const int nvars = h5_array.size();
   // Loop over the grid, if we've stepped over a patch k point fill it in
-#pragma omp parallel for
+#pragma omp parallel for reduction(max:Cs_max) reduction(min:Cs_min)
   for (int j=0; j < slice_dims[1]; ++j)
     for (int i=0; i < slice_dims[0]; ++i)
     {
@@ -885,7 +926,7 @@ void SfileHDF5::material_interpolate(vector<float*>& h5_array,
             << ", zmin=" << zmin << ", zmax=" << zmax << endl;
         if ((kmin<0) || (kmax >= nk)) // out of range
           continue; 
-        // TODO - add k indexing
+        // Loop over valid k indexing
         for (int k=kmin; k <= kmax; ++k)
         {
           // Do the interpolation to this k point
@@ -896,9 +937,13 @@ void SfileHDF5::material_interpolate(vector<float*>& h5_array,
           float qp = (1-t)*gqp(gi,gj,gk)+t*gqp(gi,gj,gk+1);
           float qs = (1-t)*gqs(gi,gj,gk)+t*gqs(gi,gj,gk+1);
           size_t ijkh5 = k + slice_dims[2]*(j + slice_dims[1]*i);
+          float cp = sqrt((2*mu + lambda)/rho);
+          float cs = sqrt(mu/rho);
+          Cs_min = min(Cs_min, cs);
+          Cs_max = max(Cs_max, cs);
           h5_array[0][ijkh5]=rho; // rho, comp 0
-          h5_array[1][ijkh5]=sqrt((2*mu + lambda)/rho); // cp, comp 1
-          h5_array[2][ijkh5]=sqrt(mu/rho); // cs, comp 2
+          h5_array[1][ijkh5]=cp; // cp, comp 1
+          h5_array[2][ijkh5]=cs; // cs, comp 2
           if (nvars > 3)
           {
             h5_array[3][ijkh5]=qp; // qp, comp 3
@@ -1079,7 +1124,7 @@ void SfileHDF5::read_sfile_interface_group(hid_t file_id, hid_t mpiprop_id,
 
       // Modify dataset read properties to enable chunking
       hid_t prop_id = H5Pcreate(H5P_DATASET_CREATE);
-      ierr = H5Pset_chunk(prop_id, z_dim, slice_dims);
+      // ierr = H5Pset_chunk(prop_id, z_dim, slice_dims);
 
       // TODO - read the topo data
       hsize_t start[2] = {-1, -1};
@@ -1146,17 +1191,225 @@ void SfileHDF5::read_sfile_interface_group(hid_t file_id, hid_t mpiprop_id,
 
 //-----------------------------------------------------------------------
 void SfileHDF5::read_sfile_material_group(hid_t file_id, hid_t mpiprop_id, 
-    vector<Sarray>& matl)
+    int nghost, int nvars, vector<Sarray>& matl)
 {
-   bool debug=true;
-   char msg[1000];
-   MPI_Comm comm = MPI_COMM_WORLD;
-   int myRank;
-   MPI_Comm_rank(MPI_COMM_WORLD, &myRank);
-   if (debug)
-      cout << "Rank " << myRank << ", SfileHDF5::read_sfile_material_group" << endl;
+  bool debug=true;
+  char msg[1000];
+  MPI_Comm comm = MPI_COMM_WORLD;
+  int myRank;
+  MPI_Comm_rank(MPI_COMM_WORLD, &myRank);
+  if (debug)
+    cout << "Rank " << myRank << ", SfileHDF5::read_sfile_material_group" << endl;
 
+  hid_t dataspace_id;
+  hid_t dataset_id;
+  herr_t ierr;
 
+  char group_name[] = "Material_model";
+  const char *field[] = {"Rho", "Cp", "Cs", "Qs", "Qp"};
+  int npatch = matl.size();
+
+  ASSERT(npatch > 0);
+  for (int p=0; p < npatch; ++p)
+  {
+    Sarray& data = matl[p];
+    for (int v=0; v < nvars; ++v)
+    {
+      // Open the dataset for each material field
+      char buff[100];
+      sprintf(buff, "/%s/grid_%d/%s", group_name, p, field[v]);
+      dataset_id = H5Dopen2(file_id, buff, H5P_DEFAULT);
+      if (dataset_id < 0)
+      {
+         cout << "Could not open dataset: " << buff << endl;
+         MPI_Abort(comm, file_id);
+      }
+      //  Read the size of the data set
+      hid_t dataspace_id = H5Dget_space(dataset_id);
+      const hsize_t dim = 3; // 3D data
+      hsize_t dims[dim]; // 3D data
+      H5Sget_simple_extent_dims(dataspace_id, dims, NULL);
+      if (debug)
+      {
+        cout << "Material patch " << p << ", variable " << field[v]
+          << ", size=(" << dims[0] << ", " << dims[1] << ", " 
+          << dims[2] << ")" << endl;
+      }
+      // Adjust the bounds, and set the start/slice size to read
+      int ib,ie,jb,je,kb,ke; // relative to h5 data, 0 offset
+      ib = max(data.m_ib-1,0);
+      ie = min(data.m_ie-1,(int) dims[0]-1);
+      jb = max(data.m_jb-1,0);
+      je = min(data.m_je-1,(int) dims[1]-1);
+      kb = max(data.m_kb-1,0);
+      ke = min(data.m_ke-1,(int) dims[2]-1);
+      // Read all the points for this processor
+      hsize_t slice_dims[dim], global_dims[dim], start[dim];
+      global_dims[0] = dims[0];
+      global_dims[1] = dims[1];
+      global_dims[2] = dims[2];
+      slice_dims[0] = ie - ib + 1;
+      slice_dims[1] = je - jb + 1;
+      slice_dims[2] = ke - kb + 1;
+      start[0] = ib;
+      start[1] = jb;
+      start[2] = kb;
+      size_t npts = (size_t)(slice_dims[0] * slice_dims[1] * slice_dims[2]);
+      float window_array[npts];
+
+      // Modify dataset read properties to enable chunking
+      hid_t prop_id = H5Pcreate(H5P_DATASET_CREATE);
+      // ierr = H5Pset_chunk(prop_id, z_dim, slice_dims);
+
+      // Read the data into it
+      if (debug)
+      {
+         sprintf(msg, "Rank %d, selecting material %s, patch %d, start [%d,%d,%d], size [%d,%d,%d] in [%d,%d,%d]\n",
+             myRank, field[v], p, (int)start[0], (int)start[1], (int)start[2],
+             (int)slice_dims[0], (int)slice_dims[1], (int)slice_dims[2],
+             (int)global_dims[0], (int)global_dims[1], (int)global_dims[2]);
+         cout << msg;
+         cout.flush();
+      }
+      hid_t window_id = H5Screate_simple(dim, slice_dims, NULL);
+      ierr = H5Sselect_hyperslab(dataspace_id, H5S_SELECT_SET, start, NULL,
+          slice_dims, NULL);
+      if (ierr < 0)
+      {
+        cout << "Error from material H5Sselect_hyperslab" << endl;
+        MPI_Abort(comm,ierr);
+      }
+      if (debug)
+      {
+        cout << "Reading material array Rank " << myRank << endl;
+        cout.flush();
+      }
+
+      ierr = H5Dread(dataset_id, H5T_IEEE_F32LE, window_id, dataspace_id,
+          mpiprop_id, window_array);
+      if (ierr < 0)
+      {
+        cout << "Error from SfileHDF5 interface H5Dread " << endl;
+        MPI_Abort(comm,ierr);
+      }
+
+      float_sw4 minval=1e38;
+      float_sw4 maxval=-1e38;
+#pragma omp parallel for reduction(min:minval) reduction(max:maxval)
+      for( int i=0 ; i < slice_dims[0]; i++ )
+      for( int j=0 ; j < slice_dims[1]; j++ )
+      for( int k=0 ; k < slice_dims[2]; k++ )
+      {
+         size_t ijkh5 = k + slice_dims[2]*(j + slice_dims[1]*i);
+         int gi = i + 1 + ib;
+         int gj = j + 1 + jb;
+         int gk = k + 1 + kb;
+         float_sw4 val = window_array[ijkh5];
+         data(v+1,gi,gj,gk) = val;
+         minval = min(val, minval);
+         maxval = max(val, maxval);
+      }
+      if (debug)
+        cout << "Material patch " << p << " variable " << field[p]
+          << " min=" << minval << ", max="  << maxval << endl;
+      ierr = H5Pclose(prop_id);
+      ierr = H5Dclose(dataset_id);
+      ierr = H5Sclose(dataspace_id);
+
+/*
+      // TODO - do we need to fill in ghost cells?
+      // Copy values into any exterior ghost cells
+      int gie = dims[0]; // Top end of domain
+#pragma omp parallel for
+      for (int gj=data.m_jb ; gj < data.m_je; ++gj) // all j
+        for (int gk=data.m_kb ; gk <= data.m_ke; ++gk) // all k
+        {
+          for (int gi=data.m_ib; gi < 1; ++gi) // i low
+            data(v+1,gi,gj,gk) = data(v+1,1,gj,gk);
+          for (int gi=gie+1; gi <= data.m_ie; ++gi) // i high
+            data(v+1,gi,gj,gk) = data(v+1,gie,gj,gk);
+        }
+*/
+    }
+  }
+}
+
+//-----------------------------------------------------------------------
+void SfileHDF5::calculate_grid_boundingbox(EW& ew, float_sw4 (&bb)[3][2])
+{
+  // Figure out bounding box in this processor
+  float_sw4 xmin=1e38, xmax=-1e38, ymin=1e38, ymax=-1e38, zmin=1e38, zmax=-1e38;
+  int g=ew.mNumberOfGrids-1;
+  float_sw4 h=ew.mGridSize[g];
+  if( xmin > (ew.m_iStartInt[g]-1)*h )
+    xmin =  (ew.m_iStartInt[g]-1)*h;
+  if( xmax < (ew.m_iEndInt[g]-1)*h )
+    xmax =  (ew.m_iEndInt[g]-1)*h;
+  if( ymin > (ew.m_jStartInt[g]-1)*h )
+    ymin =  (ew.m_jStartInt[g]-1)*h;
+  if( ymax < (ew.m_jEndInt[g]-1)*h )
+    ymax =  (ew.m_jEndInt[g]-1)*h;
+  if( ew.topographyExists() && g == ew.mNumberOfGrids-1 )
+  {
+     int kb=ew.m_kStartInt[g];
+     for( int j=ew.m_jStartInt[g] ; j <= ew.m_jEndInt[g] ; j++ )
+        for( int i=ew.m_iStartInt[g] ; i <= ew.m_iEndInt[g] ; i++ )
+           if( zmin > ew.mZ(i,j,kb) )
+              zmin = ew.mZ(i,j,kb);
+  }
+  else
+  {
+     if( zmin > (ew.m_kStartInt[g]-1)*h + ew.m_zmin[g] ) 
+        zmin = (ew.m_kStartInt[g]-1)*h + ew.m_zmin[g];
+  }
+  zmax = (ew.m_kEnd[0]-1)*h + ew.m_zmin[0]; // bottom of the domain
+  bb[0][0] = xmin;
+  bb[0][1] = xmax;
+  bb[1][0] = ymin;
+  bb[1][1] = ymax;
+  bb[2][0] = zmin;
+  bb[2][1] = zmax;
+}
+
+//-----------------------------------------------------------------------
+void SfileHDF5::calculate_interpolation_patch(vector<Sarray>& matl, 
+    int nghost, float_sw4 (&bb)[3][2], float_sw4 x0, float_sw4 y0, 
+    float hh, int nvars, vector<int>& patch_nk)
+{
+  bool debug=false;
+  MPI_Comm comm = MPI_COMM_WORLD;
+  int myRank;
+  MPI_Comm_rank(MPI_COMM_WORLD, &myRank);
+
+  // Calculate the Sarray bounds relative to the Sfile origin, grid spacing
+  int npatch = patch_nk.size();
+  for (int p=0; p < npatch; ++p)
+  {
+    float tol = 1e-2;
+    float h = hh * pow(2,npatch-1-p); // horizontal grid spacing doubles
+    int gis,gie,gjs,gje,gks,gke; // start and end SW4 indices for each dimension
+    gis = static_cast<int>(floor(1 + (bb[0][0]-x0)/h + tol))-nghost;
+    gie = static_cast<int>(ceil(1 + (bb[0][1]-x0)/h - tol))+nghost;
+    gjs = static_cast<int>(floor(1 + (bb[1][0]-y0)/h + tol))-nghost;
+    gje = static_cast<int>(ceil(1 + (bb[1][1]-y0)/h - tol))+nghost;
+    // k indices are determined from interfaces, catch out-of-bounds later
+    gks = 1;
+    gke = patch_nk[p];
+    Sarray& data = matl[p];
+    data.define(nvars,gis,gie,gjs,gje,gks,gke);
+    if (debug)
+    {
+      cout << "Rank " << myRank << " on SW4 domain:" 
+        << " x=(" << bb[0][0] << ", " << bb[0][1] << "), "
+        << " y=(" << bb[1][0] << ", " << bb[1][1] << "), "
+        << " z=(" << bb[2][0] << ", " << bb[2][1] << "), " << endl;
+      cout << "--> Sfile patch " << p << " grid spacing h=" << h
+        << ", sw4 indices:" << " i=(" << data.m_ib << ", " << data.m_ie << "), "
+        << " j=(" << data.m_jb << ", " << data.m_je << "), "
+        << " k=(" << data.m_kb << ", " << data.m_ke << "), nghost=" 
+        << nghost << endl;
+    }
+  }
 }
 
 #endif // ifdef USE_HDF5

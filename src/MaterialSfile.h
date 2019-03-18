@@ -43,6 +43,8 @@ using namespace std;
 
 class MaterialSfile : public MaterialData
 {
+ friend class SfileHDF5;
+
  public:
    
    MaterialSfile( EW * a_ew,
