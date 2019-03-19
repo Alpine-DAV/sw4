@@ -1,0 +1,17 @@
+Hi Hans –
+
+I’ve created a smallish run for you to test, debug and verify your new sfile I/O. There are only about 110,000 grid points. I ran it a 16 nodes in seconds, but probably could run on much fewer (1 or 2 ? ).
+
+Attached are the SW4 input file, sbatch/C-shell script to run it and the standard output where you can see the shear wavespeeds throughout the domain range 80 – 4420 m/s
+
+It’s for an M 6.5 Hayward Fault rupture. It runs for 1 time step and simply reads and renders the USGS 3D model with topography using the rfile. The domain is 50 x 50 x 30 km with hmin = 50 m and two MR refinements. You will have to point to the current full domain rfile.
+
+There are no globalmaterial vsmin or vpmin restrictions, so you’ll render the model without thresholding these parameters.
+
+The idea here is for you to run this case reading the USGS 3D model as an rfile and output sw4image files that show the model. Currently I just have mapview z=constant slices, but you could add vertical cross-sections too. Attached are sample images of shear and compressional wavespeeds at the surface generated with gmt, but you can use any visualization you want or simply compare the values in the sw4image files. There are octave scripts in the tools directory and examples for reading and plotting sw4images.
+
+Then you can switch the way you read the model from the rfile to the new sfile command, output the same sw4images. The plots and output files should agree to some acceptable tolerance (something like < 1% or smaller?).
+
+I think it’s best that you have this small case to develop, test and debug before we start iterating on SW4 executable versions. Your sfile reader and interpolator absolutely has to reproduce the rendered material properties before we start computing ground motions. Once you’ve verified the sfile I/O, I can start running cases where we step through time and generate ground motions. I’ll add the source and receivers to the SW4 input file.
+
+Let me know if you have any questions.
