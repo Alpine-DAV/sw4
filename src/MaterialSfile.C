@@ -119,7 +119,7 @@ void MaterialSfile::set_material_properties(std::vector<Sarray> & rhog,
         gzmax = mEW->m_zmin[g] + (mEW->m_kEndInt[g]-1)*mEW->mGridSize[g];
       }
 
-      for (int gk = mEW->m_kStartInt[g]; gk <= mEW->m_kEndInt[g]; ++gk)
+      for (int gk = mEW->m_kStart[g]; gk <= mEW->m_kEnd[g]; ++gk)
       {
         float_sw4 gz;
         if (curv)

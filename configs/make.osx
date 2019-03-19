@@ -3,6 +3,7 @@ proj = no
 FC = mpif90
 CXX = mpicxx
 EXTRA_FORT_FLAGS = 
-EXTRA_LINK_FLAGS = -framework Accelerate -L/opt/local/lib/gcc7 -lgfortran
 # If using OpenMP
-# EXTRA_LINK_FLAGS = -framework Accelerate -L/opt/local/lib/gcc7 -lomp -lgfortran
+EXTRA_LINK_FLAGS = -framework Accelerate -L/opt/local/lib/gcc7 -lomp -lgfortran
+HDF5ROOT = /usr/local/Cellar/hdf5/1.10.2_1
+ASDFROOT = /Users/hans/repos/asdf-library/
