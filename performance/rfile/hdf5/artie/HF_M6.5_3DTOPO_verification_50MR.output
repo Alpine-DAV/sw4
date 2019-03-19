@@ -1,0 +1,120 @@
+----------------------------------------------------------------
+            sw4 version 2.1-alpha
+
+ This program comes with ABSOLUTELY NO WARRANTY; released under GPL.
+ This is free software, and you are welcome to redistribute     
+ it under certain conditions, see LICENSE.txt for more details  
+----------------------------------------------------------------
+  Compiled on: Tue Feb 19 17:25:48 PST 2019
+  By user:     bjorns
+  Machine:     cori08
+  Compiler:    /opt/cray/pe/craype/2.5.15/bin/CC
+  3rd party include dir: /project/projectdirs/m2545/sw4/cori-knl/include, and library dir: /project/projectdirs/m2545/sw4/cori-knl/lib
+----------------------------------------------------------------
+
+Input file: HF_M6.5_3DTOPO_verification_50MR.sw4input
+Default Supergrid thickness has been tuned; # grid points = 30 grid sizes
+Default Supergrid damping coefficient has been tuned; damping coefficient = 2.00000000e-02
+
+* Processing the grid command...
+* Setting nx to 251 to be consistent with h=2.00000000e+02
+* Setting ny to 251 to be consistent with h=2.00000000e+02
+* Setting nz to 151 to be consistent with h=2.00000000e+02
+ Grid distributed on 512 processors 
+ Finest grid size    1007 x 1007
+ Processor array     16 x 32
+
+***Topography grid: min z = -1.113276e+03, max z = 2.955219e+01, top Cartesian z = 4.000000e+03
+
+Global grid sizes (without ghost points)
+Grid         h        Nx        Ny        Nz       Points
+   0       200       251       251       121      7623121
+   1       100       501       501        16      4016016
+   2        50      1001      1001        13     13026013
+   3        50      1001      1001        91     91182091
+Total number of grid points (without ghost points): 1.15847e+08
+
+*** Reading data from Rfile USGSBayAreaVM-08.3.0-corder.rfile in directory /global/cscratch1/sd/rodgers7/RFILE_STRIPED
+
+
+   Execution time, reading input file 5.23323798e+00 seconds 
+----------------------------------------------------
+ Making Directory: HF_M6.5_3DTOPO_verification_50MR.sw4output/
+		
+... Done!
+----------------------------------------------------
+Geographic and Cartesian coordinates of the corners of the computational grid:
+0: Lon= -1.220512e+02, Lat=3.804438e+01, x=8.659909e-09, y=-4.791773e-09
+1: Lon= -1.217198e+02, Lat=3.767850e+01, x=5.000000e+04, y=-1.959579e-08
+2: Lon= -1.221792e+02, Lat=3.741550e+01, x=5.000000e+04, y=5.000000e+04
+3: Lon= -1.225116e+02, Lat=3.778012e+01, x=3.438578e-10, y=5.000000e+04
+
+Considering all material blocks
+
+rfile command: outside = 0, material = 129755265
+
+       ----------- Material properties ranges ---------------
+       1.59000000e+03 kg/m^3 <=  Density <= 3.30000000e+03 kg/m^3
+       7.00000000e+02 m/s    <=  Vp      <= 7.78000000e+03 m/s
+       8.00000000e+01 m/s    <=  Vs      <= 4.42000000e+03 m/s
+       1.65598377e+00        <=  Vp/Vs   <= 1.08211119e+01
+       1.01760000e+07 Pa     <=  mu      <= 6.44701200e+10 Pa
+       7.58748000e+08 Pa     <=  lambda  <= 7.13862600e+10 Pa
+       Using attenuation 
+       1.30000000e+01        <=  Qs      <= 6.60000000e+02  
+       2.60000000e+01        <=  Qp      <= 1.32000000e+03  
+       ------------------------------------------------------
+
+***** PPW = minVs/h/maxFrequency ********
+g=0, h=2.000000e+02, minVs/h=14.8562 (Cartesian)
+g=1, h=1.000000e+02, minVs/h=27.0478 (Cartesian)
+g=2, h=5.000000e+01, minVs/h=51.575 (Cartesian)
+g=3, h=5.000000e+01, minVs/h=1.6 (curvilinear)
+
+
+*** Attenuation parameters calculated for 3 mechanisms,
+      max freq=2.500000e+00 [Hz], min_freq=2.500000e-02 [Hz], velo_freq=1.000000e+00 [Hz]
+
+
+   Execution time, start up phase 8.58026409e+00 seconds 
+Running sw4 on 512 processors, using 2 threads/processor...
+Writing output to directory: HF_M6.5_3DTOPO_verification_50MR.sw4output/
+============================================================
+ Running program on 512 MPI tasks using the following data: 
+
+ Start Time = 0 Goal Time = 0.00606914
+ Number of time steps = 1 dt: 0.00606914
+
+-----------------------------------------------------------------------
+  Total seismic moment (M0): 0 Nm 
+  Number of moment sources 0
+-----------------------------------------------------------------------
+number of grid point  sources = 0
+number of unique g.p. sources = 0
+writing image plane on file HF_M6.5_3DTOPO_verification_50MR.sw4output/image.cycle=0.z=0.s.sw4img
+writing image plane on file HF_M6.5_3DTOPO_verification_50MR.sw4output/image.cycle=0.z=0.p.sw4img
+writing image plane on file HF_M6.5_3DTOPO_verification_50MR.sw4output/image.cycle=0.z=0.rho.sw4img
+writing image plane on file HF_M6.5_3DTOPO_verification_50MR.sw4output/image.cycle=0.z=100.s.sw4img
+writing image plane on file HF_M6.5_3DTOPO_verification_50MR.sw4output/image.cycle=0.z=100.p.sw4img
+writing image plane on file HF_M6.5_3DTOPO_verification_50MR.sw4output/image.cycle=0.z=100.rho.sw4img
+writing image plane on file HF_M6.5_3DTOPO_verification_50MR.sw4output/image.cycle=0.z=1000.s.sw4img
+writing image plane on file HF_M6.5_3DTOPO_verification_50MR.sw4output/image.cycle=0.z=1000.p.sw4img
+writing image plane on file HF_M6.5_3DTOPO_verification_50MR.sw4output/image.cycle=0.z=1000.rho.sw4img
+writing image plane on file HF_M6.5_3DTOPO_verification_50MR.sw4output/image.cycle=0.z=5000.s.sw4img
+writing image plane on file HF_M6.5_3DTOPO_verification_50MR.sw4output/image.cycle=0.z=5000.p.sw4img
+writing image plane on file HF_M6.5_3DTOPO_verification_50MR.sw4output/image.cycle=0.z=5000.rho.sw4img
+writing image plane on file HF_M6.5_3DTOPO_verification_50MR.sw4output/image.cycle=0.z=0.topo.sw4img
+writing image plane on file HF_M6.5_3DTOPO_verification_50MR.sw4output/image.cycle=0.z=0.gridz.sw4img
+writing image plane on file HF_M6.5_3DTOPO_verification_50MR.sw4output/image.cycle=0.z=0.lat.sw4img
+writing image plane on file HF_M6.5_3DTOPO_verification_50MR.sw4output/image.cycle=0.z=0.lon.sw4img
+
+   Execution time, initial data phase 2.44742107e+00 seconds 
+
+  Begin time stepping...
+Time step       1  t =   6.0691438e-03
+  Time stepping finished...
+
+   Execution time, time stepping phase 5.48705101e-01 seconds 
+============================================================
+ program sw4 finished! 
+============================================================

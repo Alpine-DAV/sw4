@@ -1,0 +1,47 @@
+# SW4 input RUN: HF_M6.5cf_3DTOPO_VSMIN500_50MR 
+fileio path=HF_M6.5_3DTOPO_verification_50MR.sw4output pfs=1 nwriters=8
+
+# hmin: 50.0 vmin: 500.0 ppw: 8 fmax: 1.25
+grid x=50000.0 y=50000.0 z=30000.0 h=200.0 lat=38.044378 lon=-122.051201 az=143.63800 proj=tmerc datum=NAD83 lon_p=-123.0 lat_p=35.0 scale=0.9996
+
+# MR, hbase=200.0 hmin=50.0
+refinement zmax=6100.0
+refinement zmax=4600.0
+# Total number of points with mesh refinement: 781520488
+
+#time t=60.0 utcstart=01/01/2018:00:00:00.000
+time steps=1 utcstart=01/01/2018:00:00:00.000
+supergrid gp=30
+#globalmaterial vpmin=1500.0 vsmin=500.0
+attenuation phasefreq=1.0 nmech=3 maxfreq=2.5
+
+# rfile USGS 3D model
+rfile filename=USGSBayAreaVM-08.3.0-corder.rfile directory=/global/cscratch1/sd/rodgers7/RFILE_STRIPED
+topography input=rfile order=3 zmax=4000.0 file=/global/cscratch1/sd/rodgers7/RFILE_STRIPED/USGSBayAreaVM-08.3.0-corder.rfile
+
+# SRF rupture and prefilter
+#rupture file=m6.5-22.6x14.0.s500.0.v5.1.cf.srf
+#prefilter fc2=1.25 type=lowpass passes=2 order=2
+
+# receiver output, root: S nx:49 ny: 49
+# ... add later ...
+
+# Image output z=0
+image z=0 mode=s file=image cycle=0
+image z=0 mode=p file=image cycle=0
+image z=0 mode=rho file=image cycle=0
+image z=100 mode=s file=image cycle=0
+image z=100 mode=p file=image cycle=0
+image z=100 mode=rho file=image cycle=0
+image z=1000 mode=s file=image cycle=0
+image z=1000 mode=p file=image cycle=0
+image z=1000 mode=rho file=image cycle=0
+image z=5000 mode=s file=image cycle=0
+image z=5000 mode=p file=image cycle=0
+image z=5000 mode=rho file=image cycle=0
+
+image z=0 mode=topo file=image cycle=0
+image z=0 mode=gridz file=image cycle=0
+image z=0 mode=lat file=image cycle=0
+image z=0 mode=lon file=image cycle=0
+

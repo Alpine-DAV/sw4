@@ -1,0 +1,71 @@
+#!/bin/csh
+#SBATCH --account m3354
+#SBATCH -N 16 
+#SBATCH -S 4
+#SBATCH -t 0:30:00
+#SBATCH -p regular 
+#SBATCH -q premium 
+#SBATCH -C knl,quad,cache
+#SBATCH -L SCRATCH 
+#SBATCH -J HF_M6.5cf_3DTOPO_verification_50MR
+
+# Set total number of nodes request (must match -N above)
+set NODES = 16 
+
+# Set number of threads per node
+# Set number of OpenMP threads per node
+# The product of these two number must equal 64 
+#setenv OMP_NUM_THREADS 1
+#set PROCPERNODE = 64
+setenv OMP_NUM_THREADS 2
+set PROCPERNODE = 32
+#setenv OMP_NUM_THREADS 8
+#set PROCPERNODE = 8 
+
+# Always use these values:
+setenv OMP_PLACES threads
+setenv OMP_PROC_BIND spread
+
+echo
+echo NODES: $NODES
+echo PROCPERNODE: $PROCPERNODE
+echo OMP_NUM_THREADS: $OMP_NUM_THREADS
+
+set SW4BIN = /project/projectdirs/m3354/sw4/cori-knl/bin
+set SW4FILE = sw4-feb-19-2019
+
+# Note that $OMP_NUM_THREADS * $PROCPERNODE must equal 64
+set TASKS = ` echo $NODES $PROCPERNODE | awk '{ print $1 * $2 }' `
+echo TASKS: $TASKS
+
+# Number of Logical cores, for argument of -c in srun (below)
+set NUMLC = ` echo $OMP_NUM_THREADS | awk '{ print $1 * 4 }' ` 
+echo NUMLC: $NUMLC
+echo
+echo "Running on ${NODES} nodes with ${TASKS} MPI ranks and OMP_NUM_THREADS=${OMP_NUM_THREADS}"
+
+set RUN = HF_M6.5_3DTOPO_verification_50MR
+#set RUPTURE = m6.5-22.6x14.0.s500.0.v5.1.cf.srf
+echo RUN: $RUN
+
+cd $RUN
+
+# Remove any old output file
+/bin/rm -r -f $RUN.output
+# Stripe output directory
+if ( -d $RUN.sw4output ) then
+  /bin/rm -r -f $RUN.sw4output
+endif
+mkdir $RUN.sw4output
+stripe_small $RUN.sw4output
+
+# SBCAST files to assigned nodes
+sbcast -f -F2 -t 300 --compress=lz4 $SW4BIN/$SW4FILE /tmp/$SW4FILE
+sbcast -f -F2 -t 300 --compress=lz4 ./$RUN.sw4input /tmp/$RUN.sw4input
+#sbcast -f -F2 -t 300 --compress=lz4 ./$RUPTURE /tmp/$RUPTURE
+
+date
+srun -N $NODES -n $TASKS -c $NUMLC --cpu_bind=cores $SW4BIN/$SW4FILE $RUN.sw4input >! $RUN.output
+date
+
+cd ..
