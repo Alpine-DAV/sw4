@@ -20,7 +20,7 @@ attenuation
 # For sfile writing
 # h400 inputs
 rfile filename=USGSBayAreaVM-08.3.0-corder.rfile directory=/project/projectdirs/m3354
-sfile filename=entire-usgs.sfile mode=write horizontalInterval=2 depths=1000,6387.5
+sfile filename=entire-usgs-h400.sfile mode=write horizontalInterval=1 depths=1000,6387.5
 refinement zmax=6387.5
 # sfile filename=entire-usgs.sfile mode=write horizontalInterval=4 depths=500,2000,6387.5
 # refinement zmax=6387.5 # hv=200 for z > zmax in the rfile model
