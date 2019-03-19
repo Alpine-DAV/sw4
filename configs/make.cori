@@ -1,7 +1,8 @@
   etree = no
   proj = yes
 #  SW4ROOT = /project/projectdirs/m3354/sw4/cori-knl
-  SW4ROOT = /project/projectdirs/m3354/sw4/cori-haswell
+#  SW4ROOT = /project/projectdirs/m3354/sw4/cori-haswell
+  SW4ROOT = /project/projectdirs/m2868/sw4/cori-knl
 #
 # FFTW3 is available on Cori by 
 # module add cray-fftw,

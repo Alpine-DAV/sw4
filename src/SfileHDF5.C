@@ -142,7 +142,7 @@ void SfileHDF5::read_sfile_material(const std::string &filename,
     vector<Sarray>& interfaces)
 {
 #ifdef USE_HDF5
-   bool debug=true;
+   bool debug=false;
    int myRank;
    MPI_Comm_rank(MPI_COMM_WORLD, &myRank);
    if (debug)
@@ -177,6 +177,9 @@ void SfileHDF5::read_sfile_material(const std::string &filename,
    ew.computeCartesianCoord(model.m_x0, model.m_y0, lonlataz[0], lonlataz[1]);
    int npatch = patch_nk.size();
    ASSERT(npatch > 0);
+   model.m_hh.resize(npatch);
+   for (int p=0; p <= npatch; ++p)
+     model.m_hh[p] = h * pow(2,npatch-1-p);
 
    bool topoOnly = false;
    interfaces.resize(npatch+1);
@@ -184,7 +187,7 @@ void SfileHDF5::read_sfile_material(const std::string &filename,
    for (int p=0; p <= npatch; ++p)
       intf[p] = &interfaces[p];
    read_sfile_interface_group(file_id, mpiprop_id, topoOnly, intf);
-
+                  
    // Create top/bottom interfaces for interpolation
    int nvars = (model.use_attenuation()) ? 5 : 3;
    float_sw4 bb[3][2];
@@ -192,6 +195,7 @@ void SfileHDF5::read_sfile_material(const std::string &filename,
    materials.resize(npatch);
    vector<vector<int> > bbijk(npatch); // For each patch, same layout as bb
    int nghost = ew.getNumberOfGhostPoints();
+   // int nghost=0; // TODO - fill in ghost points or does MaterialSfile ?
    calculate_interpolation_patch(materials, nghost, bb, model.m_x0, model.m_y0, 
        h, nvars, patch_nk);
 
@@ -649,36 +653,6 @@ void SfileHDF5::write_sfile_interfaces(hid_t file_id, hid_t mpiprop_id,
       patch_interface(z_top[p], slice_dims, true, brks, ew);
       patch_interface(z_bot[p], slice_dims, false, brks, ew);
       float* z_vals = (f!=0) ? z_top[p] : z_bot[p];
-
-#if 0
-      // Copy top topo of grid values into window_array
-      if (ew.m_topography_exists && (g==(ngrids-1)))
-      {
-        // cout << "Interface " << g << ", copying from grid " << ig << ", index " << k << endl;
-#pragma omp parallel for
-        for( int i=0 ; i < slice_dims[0]; i++ )
-        for( int j=0 ; j < slice_dims[1]; j++ )
-        {
-           const size_t ind = j+slice_dims[1]*i; // only 2D slice
-           const int gi = (i*hs + ew.m_iStartInt[g]);
-           const int gj = (j*hs + ew.m_jStartInt[g]);
-           z_top[p][ind]= ew.mZ(1,gi,gj,gk);
-           // window_array[ind]= (double) ind; // for testing
-        }
-      }
-      else // this is a cartesian interface, fill with a constant z
-      {
-        for( int i=0 ; i < slice_dims[0]; i++ )
-        for( int j=0 ; j < slice_dims[1]; j++ )
-        {
-           const size_t ind = j+slice_dims[1]*i; // only 2D slice
-           z_top[p][ind]= ew.m_zmin[g] + (gk-1)*ew.mGridSize[g];
-           if (f==0)
-             z_bot[p][ind]= ew.m_zmin[g] + (gk-1)*ew.mGridSize[g];
-           // window_array[ind]= (double) ind; // for testing
-        }
-      }
-#endif //#if 0
       ierr = H5Dwrite(dataset_id, H5T_IEEE_F32LE, window_id, dataspace_id,
           mpiprop_id, (f!=0) ? z_top[p] : z_bot[p]);
       if (ierr < 0)
@@ -758,7 +732,7 @@ void SfileHDF5::write_sfile_materials(hid_t file_id, hid_t mpiprop_id, EW& ew,
       global_dims[1] = (ew.m_global_ny[g]-1)/hs+1;
       global_dims[2] = nk;
 
-      const char *field[] = {"Rho", "Cp", "Cs", "Qs", "Qp"};
+      const char *field[] = {"Rho", "Cp", "Cs", "Qp", "Qs"};
       int nvars = (model.use_attenuation()) ? 5 : 3;
 
       // Modify dataset creation properties to enable chunking
@@ -797,7 +771,7 @@ void SfileHDF5::write_sfile_materials(hid_t file_id, hid_t mpiprop_id, EW& ew,
         material_interpolate(h5_array, z_bot[p], z_top[p], 
             slice_dims, brk, z, ew.m_zmin[g], ew.mGridSize[g], 
             Cs_min[p], Cs_max[p],
-            ew.mRho[g], ew.mMu[g], ew.mLambda[g], ew.mQs[g], ew.mQp[g]);
+            ew.mRho[g], ew.mMu[g], ew.mLambda[g], ew.mQp[g], ew.mQs[g]);
         // Don't need this? koffset += (slice_dims[2]-1); // For overlap
       }
 
@@ -1193,7 +1167,7 @@ void SfileHDF5::read_sfile_interface_group(hid_t file_id, hid_t mpiprop_id,
 void SfileHDF5::read_sfile_material_group(hid_t file_id, hid_t mpiprop_id, 
     int nghost, int nvars, vector<Sarray>& matl)
 {
-  bool debug=true;
+  bool debug=false;
   char msg[1000];
   MPI_Comm comm = MPI_COMM_WORLD;
   int myRank;
@@ -1204,12 +1178,12 @@ void SfileHDF5::read_sfile_material_group(hid_t file_id, hid_t mpiprop_id,
   hid_t dataspace_id;
   hid_t dataset_id;
   herr_t ierr;
-
   char group_name[] = "Material_model";
-  const char *field[] = {"Rho", "Cp", "Cs", "Qs", "Qp"};
-  int npatch = matl.size();
+  const char *field[] = {"Rho", "Cp", "Cs", "Qp", "Qs"};
 
+  int npatch = matl.size();
   ASSERT(npatch > 0);
+  float minval[npatch][nvars],maxval[npatch][nvars];
   for (int p=0; p < npatch; ++p)
   {
     Sarray& data = matl[p];
@@ -1255,7 +1229,7 @@ void SfileHDF5::read_sfile_material_group(hid_t file_id, hid_t mpiprop_id,
       start[1] = jb;
       start[2] = kb;
       size_t npts = (size_t)(slice_dims[0] * slice_dims[1] * slice_dims[2]);
-      float window_array[npts];
+      float* window_array = new float[npts];
 
       // Modify dataset read properties to enable chunking
       hid_t prop_id = H5Pcreate(H5P_DATASET_CREATE);
@@ -1292,10 +1266,9 @@ void SfileHDF5::read_sfile_material_group(hid_t file_id, hid_t mpiprop_id,
         cout << "Error from SfileHDF5 interface H5Dread " << endl;
         MPI_Abort(comm,ierr);
       }
-
-      float_sw4 minval=1e38;
-      float_sw4 maxval=-1e38;
-#pragma omp parallel for reduction(min:minval) reduction(max:maxval)
+      float mintmp=1e38;
+      float maxtmp=-1e38;
+#pragma omp parallel for reduction(min:mintmp) reduction(max:maxtmp)
       for( int i=0 ; i < slice_dims[0]; i++ )
       for( int j=0 ; j < slice_dims[1]; j++ )
       for( int k=0 ; k < slice_dims[2]; k++ )
@@ -1304,22 +1277,23 @@ void SfileHDF5::read_sfile_material_group(hid_t file_id, hid_t mpiprop_id,
          int gi = i + 1 + ib;
          int gj = j + 1 + jb;
          int gk = k + 1 + kb;
-         float_sw4 val = window_array[ijkh5];
+         float val = window_array[ijkh5];
          data(v+1,gi,gj,gk) = val;
-         minval = min(val, minval);
-         maxval = max(val, maxval);
+         mintmp = min(val, mintmp);
+         maxtmp = max(val, maxtmp);
       }
-      if (debug)
-        cout << "Material patch " << p << " variable " << field[p]
-          << " min=" << minval << ", max="  << maxval << endl;
+      minval[p][v]=mintmp;
+      maxval[p][v]=maxtmp;
+      delete[] window_array;
+      ierr = H5Sclose(window_id);
       ierr = H5Pclose(prop_id);
       ierr = H5Dclose(dataset_id);
       ierr = H5Sclose(dataspace_id);
 
-/*
       // TODO - do we need to fill in ghost cells?
       // Copy values into any exterior ghost cells
-      int gie = dims[0]; // Top end of domain
+      int gie = dims[0]; // i index end of domain
+      int gje = dims[1]; // j index end of domain
 #pragma omp parallel for
       for (int gj=data.m_jb ; gj < data.m_je; ++gj) // all j
         for (int gk=data.m_kb ; gk <= data.m_ke; ++gk) // all k
@@ -1329,8 +1303,30 @@ void SfileHDF5::read_sfile_material_group(hid_t file_id, hid_t mpiprop_id,
           for (int gi=gie+1; gi <= data.m_ie; ++gi) // i high
             data(v+1,gi,gj,gk) = data(v+1,gie,gj,gk);
         }
-*/
+
+#pragma omp parallel for
+      for (int gi=1 ; gi <= gie; ++gi) // interior i
+        for (int gk=data.m_kb ; gk <= data.m_ke; ++gk) // all k
+        {
+          for (int gj=data.m_jb; gj < 1; ++gj) // j low
+            data(v+1,gi,gj,gk) = data(v+1,gi,1,gk);
+          for (int gj=gje+1; gj <= data.m_je; ++gj) // j high
+            data(v+1,gi,gj,gk) = data(v+1,gi,gje,gk);
+        }
+#if 0
+#endif
     }
+  }
+
+  float min_glb[npatch][nvars], max_glb[npatch][nvars];
+  MPI_Reduce(minval, min_glb, npatch*nvars, MPI_FLOAT, MPI_MIN, 0, MPI_COMM_WORLD );
+  MPI_Reduce(maxval, max_glb, npatch*nvars, MPI_FLOAT, MPI_MAX, 0, MPI_COMM_WORLD );
+  if (myRank == 0)
+  {
+    for (int p=0; p < npatch; ++p)
+    for (int v=0; v < nvars; ++v)
+      cout << "Material patch " << p << " variable " << field[v]
+        << " min=" << min_glb[p][v] << ", max="  << max_glb[p][v] << endl;
   }
 }
 
@@ -1385,8 +1381,8 @@ void SfileHDF5::calculate_interpolation_patch(vector<Sarray>& matl,
   int npatch = patch_nk.size();
   for (int p=0; p < npatch; ++p)
   {
-    float tol = 1e-2;
     float h = hh * pow(2,npatch-1-p); // horizontal grid spacing doubles
+    float tol = 1e-2;
     int gis,gie,gjs,gje,gks,gke; // start and end SW4 indices for each dimension
     gis = static_cast<int>(floor(1 + (bb[0][0]-x0)/h + tol))-nghost;
     gie = static_cast<int>(ceil(1 + (bb[0][1]-x0)/h - tol))+nghost;

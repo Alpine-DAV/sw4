@@ -66,7 +66,6 @@ class MaterialSfile : public MaterialData
   static void read_topo(const std::string &file, const std::string &path, 
       EW& ew, Sarray& gridElev, float_sw4& lon0, float_sw4& lat0, 
       float_sw4& azim, float_sw4& hh);
-  void read_materials();
   void write_sfile(MaterialRfile& rfile);
   int horizontal_interval() {return m_horizontalInterval;}
   //  int get_material_pt( double x, double y, double z, double& rho, double& cs, double& cp,
@@ -100,7 +99,8 @@ class MaterialSfile : public MaterialData
    vector<int> m_ifirst, m_ilast, m_jfirst, m_jlast, m_kfirst, m_klast, m_ni, m_nj, m_nk;
 
   // file coordinate system is x=(i-1)*m_hx[gr] + m_xmin[gr], in SW4 coordinates.
-   vector<float_sw4> m_z0, m_hh, m_hv;
+   // vector<float_sw4> m_z0, m_hh, m_hv;
+   vector<float_sw4> m_hh;
    double m_x0, m_y0;
 
    // xminloc, xmaxloc, etc. is the bounding box for the set of data patches in this processor.
