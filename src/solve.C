@@ -893,10 +893,7 @@ void EW::solve( vector<Source*> & a_Sources, vector<TimeSeries*> & a_TimeSeries,
        }
        // Force write all the TimeSeries files for restart
        double time_chkpt_timeseries=MPI_Wtime();
-       for (int ts=0; ts<a_TimeSeries.size(); ts++)
-       {
-         a_TimeSeries[ts]->writeFile();
-       }
+       writeTimeSeries(a_TimeSeries);
 	     double time_chkpt_timeseries_tmp=MPI_Wtime()-time_chkpt_timeseries;
        if( m_output_detailed_timing )
        {
@@ -997,6 +994,32 @@ void EW::solve( vector<Source*> & a_Sources, vector<TimeSeries*> & a_TimeSeries,
 // add to total time for detailed timing output
      // time_sum[0] += max_hdf5_time;
      // time_sum[7] += max_hdf5_time; // fold the essi output into images and time-series
+   }
+// Only do this if a MaterialSfile need to write the hdf5 material file
+   ASSERT(m_mtrlblocks.size() > 0);
+   MaterialSfile* sfile = NULL;
+   for (int m=0; m<m_mtrlblocks.size(); m++)
+   {
+     sfile = dynamic_cast<MaterialSfile*>(m_mtrlblocks[m]);
+     if ((sfile != NULL) && (sfile->check_write_hdf5()))
+       break;
+     else
+       sfile = NULL;
+   }
+
+   if (sfile != NULL)
+   {
+     // There should be only 1 rfile material block
+     MaterialRfile* rfile = NULL;
+     for (int m=0; m<m_mtrlblocks.size(); m++)
+     {
+       rfile = dynamic_cast<MaterialRfile*>(m_mtrlblocks[m]);
+       if (rfile != NULL)
+       {
+         sfile->write_sfile(*rfile);
+         break;
+       }
+     }
    }
 #endif
 
