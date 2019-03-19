@@ -150,8 +150,13 @@ void EW::check_materials()
 	for( int j=m_jStart[g] ; j <= m_jEnd[g] ; j++ )
 	  for( int i=m_iStart[g] ; i <= m_iEnd[g] ; i++ )
 	  {
+	    if( mRho[g](i,j,k) <= 0.)
+          cout << "Density= " << mRho[g](i,j,k)<< " in grid g= " << g << " at point " 
+			  << " (" << i <<","<<j<<","<<k<<") " << endl;
+      /*
 	    CHECK_INPUT( mRho[g](i,j,k) > 0., "Density= " << mRho[g](i,j,k)<< " in grid g= " << g << " at point " 
 			  << " (" << i <<","<<j<<","<<k<<") ");
+      */
 	  }
   }
    

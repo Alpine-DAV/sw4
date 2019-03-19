@@ -367,7 +367,10 @@ bool EW::parseInputFile( vector<vector<Source*> > & a_GlobalUniqueSources,
  	buildGaussianHillTopography(m_GaussianAmp, m_GaussianLx, m_GaussianLy, m_GaussianXc, m_GaussianYc);
      }      
      else if( m_topoInputStyle == EW::Rfile )
-	extractTopographyFromRfile( m_topoFileName );
+        extractTopographyFromRfile( m_topoFileName );
+     else if( m_topoInputStyle == EW::Sfile )
+	      extractTopographyFromSfile( m_topoFileName );
+
 
 // preprocess the mTopo array
      if (m_topoInputStyle != EW::GaussianHill) // no smoothing or extrapolation for a gaussian hill
@@ -495,6 +498,8 @@ bool EW::parseInputFile( vector<vector<Source*> > & a_GlobalUniqueSources,
 	 processMaterialPfile( buffer );
        else if (startswith("rfile", buffer))
 	 processMaterialRfile( buffer );
+       else if (startswith("sfile", buffer))
+	 processMaterialSfile( buffer );
        else if (startswith("vimaterial", buffer))
 	 processMaterialVimaterial( buffer );
        else if (startswith("invtestmaterial", buffer))
@@ -1529,6 +1534,12 @@ void EW::processTopography(char* buffer)
 	  else if (strcmp("rfile", token) == 0)
 	  {
 	     m_topoInputStyle=Rfile;
+	     m_topography_exists=true;
+	     needFileName=true; // we require the file name to be given on the topography command line
+	  }
+	  else if (strcmp("sfile", token) == 0)
+	  {
+	     m_topoInputStyle=Sfile;
 	     m_topography_exists=true;
 	     needFileName=true; // we require the file name to be given on the topography command line
 	  }
@@ -8108,6 +8119,106 @@ void EW::processMaterialRfile(char* buffer)
 
    MaterialRfile* rf = new MaterialRfile( this, filename, directory, bufsize );
    add_mtrl_block( rf  );
+}
+
+//-----------------------------------------------------------------------
+void EW::processMaterialSfile(char* buffer)
+{
+   string name = "sfile";
+
+  // Used for sfiles
+   int horizontalInterval=1;
+   string filename = "NONE";
+   string directory = "NONE";
+   float_sw4 a_ppm=0.,vpmin_ppm=0.,vsmin_ppm=0,rhomin_ppm=0.;
+   string cflatten = "NONE";
+   bool flatten = false;
+   bool coords_geographic = true;
+   bool read_hdf5 = false;
+   bool write_hdf5 = false;
+   vector<double> vec_depths;
+   int nstenc = 5;
+   int bufsize = 200000;  // Parallel IO buffer, in number of grid points.
+
+   char* token = strtok(buffer, " \t");
+  //  CHECK_INPUT(strcmp("rfile", token) == 0,
+  //	      "ERROR: material data can only be set by an rfile line, not: " << token);
+
+   string err = token;
+   err += " Error: ";
+   token = strtok(NULL, " \t");
+
+   while (token != NULL)
+   {
+      // while there are tokens in the string still
+      if (startswith("#", token) || startswith(" ", buffer))
+	// Ignore commented lines and lines with just a space.
+	 break;
+      //      else if (startswith("a=", token))
+      //      {
+      //         token += 2; // skip a=
+      //         a_ppm = atof(token);
+      //      }
+      else if (startswith("filename=", token))
+      {
+	 token += 9; // skip filename=
+	 filename = token;
+      }
+      else if (startswith("directory=", token))
+      {
+	 token += 10; // skip directory=
+	 directory = token;
+      }
+      else if (startswith("mode=", token))
+      {
+         token += 5; // skip mode=
+         if( strcmp(token,"read")==0 )
+            read_hdf5 = true;
+         else if( strcmp(token,"write")==0 )
+            write_hdf5 = true;
+         else if( strcmp(token,"readwrite")==0 )
+         {
+            read_hdf5 = true;
+            write_hdf5 = true;
+         }
+      }
+      else if (startswith("horizontalInterval=", token) )
+      {
+	       token += 19; // skip cycleInterval=
+	       CHECK_INPUT( atoi(token) >= 0.,"Processing sfile command: horizontalInterval must be a non-negative integer, not: " << token);
+         horizontalInterval = atoi(token);
+      }
+      else if (startswith("depths=", token) )
+      {
+ 	       token += 7; // skip depths=
+         // Tokenize the rest - "," separator
+         char* depth_chars = strtok(token, ",");
+         while (depth_chars != NULL)
+         {
+            CHECK_INPUT( atof(depth_chars) >= 0.,"Processing sfile command: depths must be comma-separated integer values: " << depth_chars);
+            vec_depths.push_back(atof(depth_chars));
+            depth_chars = strtok(NULL, ",");
+         }
+      }
+     else
+      {
+	 cout << token << " is not a sfile option " << endl;
+      }
+      token = strtok(NULL, " \t");
+   }
+  // End parsing...
+
+  //----------------------------------------------------------------
+  // Check parameters
+  //----------------------------------------------------------------
+   if (strcmp(directory.c_str(),"NONE")==0)
+      directory = string("./");
+
+   if (m_myRank == 0)
+      cout << "*** Using Sfile " << filename << " in directory " << directory << endl;
+
+   MaterialSfile* sf = new MaterialSfile( this, filename, directory, read_hdf5,       write_hdf5, horizontalInterval, vec_depths);
+   add_mtrl_block( sf  );
 }
 
 //-----------------------------------------------------------------------

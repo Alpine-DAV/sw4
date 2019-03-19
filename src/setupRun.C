@@ -966,7 +966,6 @@ void EW::set_materials()
       extrapolateInZ(g, mQp[g], false, true );
    }
 
-
 // extrapolate material properties to mesh refinement boundaries (e.g. for doing the LOH cases more accurately)
     if (!mQuiet && proc_zero() && mVerbose>=3)
     {

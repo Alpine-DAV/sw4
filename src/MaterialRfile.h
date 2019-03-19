@@ -57,6 +57,7 @@ class MaterialRfile : public MaterialData
 			       std::vector<Sarray> & xis, 
 			       std::vector<Sarray> & xip);
 
+  bool use_attenuation() {return m_use_attenuation;}
   //  int get_material_pt( double x, double y, double z, double& rho, double& cs, double& cp,
   //		       double& qs, double& qp );
 

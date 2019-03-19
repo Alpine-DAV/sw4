@@ -43,8 +43,8 @@
 #include <fcntl.h>
 #include "EW.h"
 #include "MaterialRfile.h"
+#include "SfileHDF5.h"
 #include "Byteswapper.h"
-//#include "Parallel_IO.h"
 
 using namespace std;
 
@@ -903,5 +903,3 @@ void MaterialRfile::material_check( bool water )
       }
    }
 }
-
-    
