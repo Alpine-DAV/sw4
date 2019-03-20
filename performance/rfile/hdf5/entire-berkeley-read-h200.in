@@ -6,17 +6,17 @@ fileio path=entire-berkeley-results
 # DON'T CHANGE AZ
 grid x=12000 y=12000 z=6300 h=200 lon=-122.25 lat=37.93 az=143.6380001671 proj=tmerc datum=NAD83 lon_p=-123.0 lat_p=35.0 scale=0.9996
 # grid x=12000 y=12000 z=6300 h=100 lon=-122.25 lat=37.93 az=143.6380001671 proj=tmerc datum=NAD83 lon_p=-123.0 lat_p=35.0 scale=0.9996
-
+supergrid gp=4
 time steps=0
 
 # Earth Model
 
 # Rfile material model + topography
 
-rfile filename=berkeley.rfile
+# rfile filename=berkeley.rfile
 # Below for h=200
-sfile filename=entire-berkeley.sfile mode=write horizontalInterval=2 depths=1000,2837.5,3937.5
-refinement zmax=2837.5
+sfile filename=entire-berkeley.sfile mode=read
+# refinement zmax=2837.5
 refinement zmax=3937.5
 # Below for h=100
 # sfile filename=entire-berkeley.sfile mode=write horizontalInterval=4 depths=2587.5,3187.5
@@ -27,8 +27,8 @@ refinement zmax=3937.5
 
 
 # NOTE: order = 2 for quadratic interpolation ONLY to be used for model construction
-topography input=rfile zmax=2287.5 order=2 file=berkeley.rfile
-# topography input=sfile zmax=2287.5 order=2 file=entire-berkeley.sfile
+# topography input=rfile zmax=2287.5 order=2 file=berkeley.rfile
+topography input=sfile zmax=2287.5 order=2 file=entire-berkeley.sfile
 
 attenuation
 

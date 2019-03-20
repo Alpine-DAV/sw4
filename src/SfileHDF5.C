@@ -142,7 +142,7 @@ void SfileHDF5::read_sfile_material(const std::string &filename,
     vector<Sarray>& interfaces)
 {
 #ifdef USE_HDF5
-   bool debug=true;
+   bool debug=false;
    int myRank;
    MPI_Comm_rank(MPI_COMM_WORLD, &myRank);
    if (debug)
@@ -1275,7 +1275,7 @@ void SfileHDF5::read_sfile_material_group(hid_t file_id, hid_t mpiprop_id,
       }
       float mintmp=1e38;
       float maxtmp=-1e38;
-// #pragma omp parallel for reduction(min:mintmp) reduction(max:maxtmp)
+#pragma omp parallel for reduction(min:mintmp) reduction(max:maxtmp)
       for( int i=0 ; i < slice_dims[0]; i++ )
       for( int j=0 ; j < slice_dims[1]; j++ )
       for( int k=0 ; k < slice_dims[2]; k++ )
@@ -1285,22 +1285,6 @@ void SfileHDF5::read_sfile_material_group(hid_t file_id, hid_t mpiprop_id,
          int gj = j + 1 + jb;
          int gk = k + 1 + kb;
          float val = window_array[ijkh5];
-
-         /*
-         bool check = ((gi < data.m_ib) || (gi > data.m_ie) || 
-                       (gj < data.m_jb) || (gj > data.m_je) || 
-                       (gk < data.m_kb) || (gk > data.m_ke));
-          if (debug && check)
-          {
-            char msg[1000];
-            sprintf(msg, "Rank %d, bounds error in patch %d, [%d,%d,%d], with ib=[%d,%d,%d] in slice size=[%d,%d,%d]\n",
-                myRank, p, gi, gj, gk, ib, jb, kb, 
-                (int) slice_dims[0], (int) slice_dims[1], (int) slice_dims[2]); 
-            cout << msg;
-            cout.flush();
-          }
-         */
-
          data(v+1,gi,gj,gk) = val;
          mintmp = min(val, mintmp);
          maxtmp = max(val, maxtmp);
@@ -1312,35 +1296,8 @@ void SfileHDF5::read_sfile_material_group(hid_t file_id, hid_t mpiprop_id,
       ierr = H5Pclose(prop_id);
       ierr = H5Dclose(dataset_id);
       ierr = H5Sclose(dataspace_id);
-
-#if 0
-      // TODO - do we need to fill in ghost cells?
-      // Copy values into any exterior ghost cells
-      int gie = dims[0]; // i index end of domain
-      int gje = dims[1]; // j index end of domain
-#pragma omp parallel for
-      for (int gj=data.m_jb ; gj < data.m_je; ++gj) // all j
-        for (int gk=data.m_kb ; gk <= data.m_ke; ++gk) // all k
-        {
-          for (int gi=data.m_ib; gi < 1; ++gi) // i low
-            data(v+1,gi,gj,gk) = data(v+1,1,gj,gk);
-          for (int gi=gie+1; gi <= data.m_ie; ++gi) // i high
-            data(v+1,gi,gj,gk) = data(v+1,gie,gj,gk);
-        }
-
-#pragma omp parallel for
-      for (int gi=1 ; gi <= gie; ++gi) // interior i
-        for (int gk=data.m_kb ; gk <= data.m_ke; ++gk) // all k
-        {
-          for (int gj=data.m_jb; gj < 1; ++gj) // j low
-            data(v+1,gi,gj,gk) = data(v+1,gi,1,gk);
-          for (int gj=gje+1; gj <= data.m_je; ++gj) // j high
-            data(v+1,gi,gj,gk) = data(v+1,gi,gje,gk);
-        }
-#endif
     }
   }
-
   float min_glb[npatch][nvars], max_glb[npatch][nvars];
   MPI_Reduce(minval, min_glb, npatch*nvars, MPI_FLOAT, MPI_MIN, 0, MPI_COMM_WORLD );
   MPI_Reduce(maxval, max_glb, npatch*nvars, MPI_FLOAT, MPI_MAX, 0, MPI_COMM_WORLD );
@@ -1395,7 +1352,7 @@ void SfileHDF5::calculate_interpolation_patch(vector<Sarray>& matl,
     int nghost, float_sw4 (&bb)[3][2], float_sw4 x0, float_sw4 y0, 
     float hh, int nvars, vector<int>& patch_nk)
 {
-  bool debug=true;
+  bool debug=false;
   MPI_Comm comm = MPI_COMM_WORLD;
   int myRank;
   MPI_Comm_rank(MPI_COMM_WORLD, &myRank);

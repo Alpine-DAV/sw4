@@ -89,7 +89,7 @@ void MaterialSfile::set_material_properties(std::vector<Sarray> & rhog,
 {
   if (!m_read_hdf5) // not for reading
     return;
-  bool debug=true;
+  bool debug=false;
   MPI_Comm comm = MPI_COMM_WORLD;
   int myRank;
   MPI_Comm_rank(MPI_COMM_WORLD, &myRank);
@@ -110,9 +110,11 @@ void MaterialSfile::set_material_properties(std::vector<Sarray> & rhog,
     {
       Sarray& data=rho;
       char msg[1000];
-      sprintf(msg, "Rank %d, grid %d sw4 bounds [%d:%d,%d:%d,%d:%d]\n",
+      sprintf(msg, "Rank %d, grid %d sw4 bounds [%d:%d,%d:%d,%d:%d], interior [%d:%d,%d:%d,%d:%d]\n",
           myRank, g, data.m_ib, data.m_ie, data.m_jb, data.m_je, 
-          data.m_kb, data.m_ke);
+          data.m_kb, data.m_ke, mEW->m_iStartInt[g], mEW->m_iEndInt[g], 
+          mEW->m_jStartInt[g], mEW->m_jEndInt[g], 
+          mEW->m_kStartInt[g], mEW->m_kEndInt[g]);
       cout << msg;
       cout.flush();
     }
@@ -199,6 +201,12 @@ void MaterialSfile::set_material_properties(std::vector<Sarray> & rhog,
           bool atbot = g==0 && gk<=mEW->m_kEndInt[g] && p==0 && gz>zbot-tol;
           if (inz || attop || atbot)
           {
+            // Make sure we're in the interpolation index range
+            ib = max(min(ib, mMaterial[p].m_ie-1),mMaterial[p].m_ib);
+            jb = max(min(jb, mMaterial[p].m_je-1),mMaterial[p].m_jb);
+            wx = (gx-m_x0)/h - (ib-1); // fraction of h from ib
+            wy = (gy-m_y0)/h - (jb-1); // fraction of h from jb
+              
             int nk = mMaterial[p].m_ke - mMaterial[p].m_kb + 1;
             float_sw4 hv = (zbot - ztop) / (float_sw4) (nk-1);
             int kb = (int) floor(1+(gz - ztop)/hv+tol);
@@ -208,8 +216,19 @@ void MaterialSfile::set_material_properties(std::vector<Sarray> & rhog,
               wz = 0; // Just copy the value, don't extrapolate
             if (gz > zbot)
               wz = 1; // Just copy the value, don't extrapolate
-            float_sw4 rhoi[2], cpi[2], csi[2], qpi[2], qsi[2];
+            if ((wx < -tol || wx > 1+tol) || 
+                (wy < -tol || wy > 1+tol) || 
+                (wz < -tol || wz > 1+tol))
+            {
+              char msg[1000];
+              sprintf(msg, "Rank %d, grid %d point [%d,%d,%d], from patch %d, [%d:%d,%d:%d,%d:%d], wx=%0.3f, wy=%0.3f, wz=%0.3f!\n",
+                  myRank, g, gi, gj, gk, p, ib, ib+1, jb, jb+1, kb, kb+1,
+                  wx, wy, wz);
+              cout << msg;
+              cout.flush();
+            }
 
+            float_sw4 rhoi[2], cpi[2], csi[2], qpi[2], qsi[2];
             Sarray& data = mMaterial[p];
             bool outofbounds = ((ib < data.m_ib) || (ib+1 > data.m_ie) || 
                           (jb < data.m_jb) || (jb+1 > data.m_je) || 
@@ -217,8 +236,8 @@ void MaterialSfile::set_material_properties(std::vector<Sarray> & rhog,
             if (debug && outofbounds)
             {
               char msg[1000];
-              sprintf(msg, "Rank %d, grid %d point [%d,%d,%d], from patch %d, out of bounds [%d,%d,%d] in [%d:%d,%d:%d,%d:%d]\n",
-                  myRank, g, gi, gj, gk, p, ib, jb, kb,
+              sprintf(msg, "Rank %d, grid %d point [%d,%d,%d], from patch %d, out of bounds [%d:%d,%d:%d,%d:%d] in [%d:%d,%d:%d,%d:%d]\n",
+                  myRank, g, gi, gj, gk, p, ib, ib+1, jb, jb+1, kb, kb+1,
                   data.m_ib, data.m_ie, data.m_jb, data.m_je, 
                   data.m_kb, data.m_ke);
               cout << msg;

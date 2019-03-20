@@ -54,10 +54,10 @@ if (exist(file))
     end
     
     % Read in the appropriate 3Dimg file
-    img_ngrids = 2; % FIXME - read it from the file
-    mat_img = cell(img_ngrids+1,10); % same read from .3Dimg files
+    img_ngrids = 1; % Will read it from the file  
     comp_str = ["rho", "p", "s", "qp", "qs"];
-    for g=1:img_ngrids
+    g=1;
+    while (g<=img_ngrids)
         for comp=1:5
             file = sprintf('%s/%s-results/image.cycle=%s.y=%s.%s.sw4img', ...
                 basedir,testname,cycle_str,yslice_str,comp_str(comp));
@@ -68,7 +68,10 @@ if (exist(file))
             end
 %             [im,x,y,z,t,timestring,zmin]=readimage3d(file,g,0);
             [im,x,y,z,plane,t,timestring,npatches,zmin]=readimage(file, g, 1);
-            img_ngrids = npatches;
+            img_ngrids = npatches;            
+            if ~exist('mat_img')
+                mat_img = cell(img_ngrids+1,10); % same read from .3Dimg files
+            end
             mat_img{g,comp} = im;
             % Save topo too
             if (comp == 1)
@@ -88,6 +91,7 @@ if (exist(file))
                 end
             end
         end
+        g = g+1;
     end
     
     % plot a vertical slice of each variable
