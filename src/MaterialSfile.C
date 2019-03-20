@@ -87,7 +87,13 @@ void MaterialSfile::set_material_properties(std::vector<Sarray> & rhog,
 			       std::vector<Sarray> & xisg, 
 			       std::vector<Sarray> & xipg)
 {
+  if (!m_read_hdf5) // not for reading
+    return;
   bool debug=true;
+  MPI_Comm comm = MPI_COMM_WORLD;
+  int myRank;
+  MPI_Comm_rank(MPI_COMM_WORLD, &myRank);
+  MPI_Barrier(MPI_COMM_WORLD); // FIXME - remove after debugging
 
   // Assume attenuation arrays defined on all grids if xp defined on grid zero.
   bool use_q = m_use_attenuation && xipg[0].is_defined();
@@ -101,12 +107,28 @@ void MaterialSfile::set_material_properties(std::vector<Sarray> & rhog,
     Sarray& cs=csg[g];
     Sarray& qp=xipg[g];
     Sarray& qs=xisg[g];
-#pragma omp parallel for
+    if (debug)
+    {
+      Sarray& data=rho;
+      char msg[1000];
+      sprintf(msg, "Rank %d, grid %d sw4 bounds [%d:%d,%d:%d,%d:%d]\n",
+          myRank, g, data.m_ib, data.m_ie, data.m_jb, data.m_je, 
+          data.m_kb, data.m_ke);
+      cout << msg;
+      cout.flush();
+    }
+
+    if (debug)
+      cout << "Rank " << myRank << " interpolating grid " << g << endl;
+// #pragma omp parallel for
     for (int gj = mEW->m_jStartInt[g]; gj <= mEW->m_jEndInt[g]; ++gj)
     for (int gi = mEW->m_iStartInt[g]; gi <= mEW->m_iEndInt[g]; ++gi)
     {
-      float_sw4 gx = (gi-1)*mEW->mGridSize[g];
-      float_sw4 gy = (gj-1)*mEW->mGridSize[g];
+      float_sw4 gh = mEW->mGridSize[g];
+      float_sw4 gx = (gi-1)*gh;
+      float_sw4 gy = (gj-1)*gh;
+      // float_sw4 gx = min(max(gi-1,0),mEW->m_global_nx[g]*mEW->mGridSize[g];
+      // float_sw4 gy = min(max(gj-1,0),mEW->m_global_ny[g])*mEW->mGridSize[g];
       float_sw4 gzmin, gzmax;
       if (curv)
       {
@@ -127,13 +149,38 @@ void MaterialSfile::set_material_properties(std::vector<Sarray> & rhog,
         else
           gz = mEW->m_zmin[g] + (gk-1)*mEW->mGridSize[g];
 
+        bool pasttop = g==(ngrids-1) && gk<1;
+        bool pastbot = g==0 && gk>mEW->m_kEndInt[g];
+        if (pasttop || pastbot)
+          continue; // skip these
+
         for (int p=0; p < npatch; ++p)
         {
-          float_sw4 h = m_hh[p];
           float_sw4 tol = 1e-2;
+          // bottom interface has coarser resolution (except at bottom)
+          float ch = (p==0) ? m_hh[0] : m_hh[p-1];
+          tol = 1e-2;
+          Sarray& ifbot = mInterface[p];
+          int cib = (int) floor(1+(gx-m_x0)/ch + tol);
+          int cjb = (int) floor(1+(gy-m_y0)/ch + tol);
+          cib = min(cib, ifbot.m_ie-1);
+          cjb = min(cjb, ifbot.m_je-1);
+          float_sw4 zbot00 = -ifbot(cib,cjb,1);
+          float_sw4 zbot10 = -ifbot(cib+1,cjb,1);
+          float_sw4 zbot01 = -ifbot(cib,cjb+1,1);
+          float_sw4 zbot11 = -ifbot(cib+1,cjb+1,1);
+          float cwx = (gx-m_x0)/ch - (cib-1); // fraction of ch from cib
+          float cwy = (gy-m_y0)/ch - (cjb-1); // fraction of ch from cjb
+          float_sw4 zbot = (zbot00*(1-cwx)*(1-cwy) + 
+            zbot10*cwx*(1-cwy) + zbot01*(1-cwx)*cwy + 
+            zbot11*cwx*cwy);
+
+          float_sw4 h = m_hh[p];
           Sarray& iftop = mInterface[p+1];
-          int ib = min((int) floor(1+(gx-m_x0)/h + tol), iftop.m_ie-1);
-          int jb = min((int) floor(1+(gy-m_y0)/h + tol), iftop.m_je-1);
+          int ib = (int) floor(1+(gx-m_x0)/h + tol);
+          int jb = (int) floor(1+(gy-m_y0)/h + tol);
+          ib = min(ib, iftop.m_ie-1);
+          jb = min(jb, iftop.m_je-1);
           // Interpolate zmin, zmax for this xy location from top interface
           float_sw4 ztop00 = -iftop(ib,jb,1);
           float_sw4 ztop10 = -iftop(ib+1,jb,1);
@@ -145,33 +192,46 @@ void MaterialSfile::set_material_properties(std::vector<Sarray> & rhog,
             ztop10*wx*(1-wy) + ztop01*(1-wx)*wy + 
             ztop11*wx*wy);
 
-          // bottom interface has coarser resolution (except at bottom)
-          h = (p==0) ? m_hh[0] : m_hh[p-1];
-          tol = 1e-2;
-          Sarray& ifbot = mInterface[p];
-          ib = min((int) floor(1+(gx-m_x0)/h + tol), ifbot.m_ie-1);
-          jb = min((int) floor(1+(gy-m_y0)/h + tol), ifbot.m_je-1);
-          float_sw4 zbot00 = -ifbot(ib,jb,1);
-          float_sw4 zbot10 = -ifbot(ib+1,jb,1);
-          float_sw4 zbot01 = -ifbot(ib,jb+1,1);
-          float_sw4 zbot11 = -ifbot(ib+1,jb+1,1);
-          wx = (gx-m_x0)/h - (ib-1); // fraction of h from ib
-          wy = (gy-m_y0)/h - (jb-1); // fraction of h from jb
-          float_sw4 zbot = (zbot00*(1-wx)*(1-wy) + 
-            zbot10*wx*(1-wy) + zbot01*(1-wx)*wy + 
-            zbot11*wx*wy);
 
           // Do the interpolation if it's in range 
           // OR we're at the top and need to extrapolate?
-          if ((gz>(ztop-tol) && gz<(zbot+tol)) ||
-              (g==(ngrids-1) && gk==1 && p==(npatch-1)))
+          bool inz = gz>(ztop-tol) && gz<(zbot+tol);
+          bool attop = g==(ngrids-1) && gk==1 && p==(npatch-1);
+          if (inz || attop)
           {
             int nk = mMaterial[p].m_ke - mMaterial[p].m_kb + 1;
-            float_sw4 hv = (zbot - ztop) / (float_sw4) nk;
-            int kb = min((int) floor(1+(gz - ztop)/hv+tol), nk-1);
-            kb = max(kb,1);
-            float_sw4 wz = (gz - ztop) / (zbot - ztop);
+            float_sw4 hv = (zbot - ztop) / (float_sw4) (nk-1);
+            int kb = (int) floor(1+(gz - ztop)/hv+tol);
+            kb = max(min(kb, nk-1),1);
+            float wz = (gz - ztop)/hv - (kb-1);
+            if (gz < ztop)
+              wz = 0; // Just copy the value, don't extrapolate
+            if (gz > zbot)
+              wz = 1; // Just copy the value, don't extrapolate
             float_sw4 rhoi[2], cpi[2], csi[2], qpi[2], qsi[2];
+
+            Sarray& data = mMaterial[p];
+            bool outofbounds = ((ib < data.m_ib) || (ib+1 > data.m_ie) || 
+                          (jb < data.m_jb) || (jb+1 > data.m_je) || 
+                          (kb < data.m_kb) || (kb+1 > data.m_ke));
+            if (debug && outofbounds)
+            {
+              char msg[1000];
+              sprintf(msg, "Rank %d, grid %d point [%d,%d,%d], from patch %d, out of bounds [%d,%d,%d] in [%d:%d,%d:%d,%d:%d]\n",
+                  myRank, g, gi, gj, gk, p, ib, jb, kb,
+                  data.m_ib, data.m_ie, data.m_jb, data.m_je, 
+                  data.m_kb, data.m_ke);
+              cout << msg;
+              cout.flush();
+              sprintf(msg, "Rank %d --> values gx=%0.2f, gy=%0.2f, gz=%0.2f, hh=%0.2f\n",
+                  myRank, gx,gy,gz,h);
+              cout << msg;
+              cout.flush();
+            }
+            if (outofbounds)
+              continue; // Can't use this patch
+#if 0
+#endif // #if 0
             for (int k=0; k < 2; ++k)
             {
               rhoi[k] = mMaterial[p](1,ib,jb,kb+k)*(1-wx)*(1-wy)
@@ -206,17 +266,16 @@ void MaterialSfile::set_material_properties(std::vector<Sarray> & rhog,
               qp(gi,gj,gk) = qpi[0]*(1-wz)+qpi[1]*wz;
               qs(gi,gj,gk) = qsi[0]*(1-wz)+qsi[1]*wz;
             }
-#if 0
-#endif // #if 
-
-            if (debug && gi==1 && gj==1)
+            // if (debug && gi==1 && gj==1)
             {
               char msg[1000];
-              sprintf(msg, "Patch %d, grid %d point [%d,%d,%d], gz=%0.2f, wz=%0.2f, from [%d,%d,%d]\n",
-                  p, g, gi, gj, gk, gz, wz, ib, jb, kb); 
+              sprintf(msg, "Grid %d point [%d,%d,%d], gz=%0.2f, wz=%0.2f, from patch %d, [%d,%d,%d]\n",
+                  g, gi, gj, gk, gz, wz, p, ib, jb, kb); 
               cout << msg;
               cout.flush();
             }
+#if 0
+#endif // #if 0
             break; // stop looking in patches, go to next gk
           } // hit on gz in patch
         } // p
@@ -236,6 +295,7 @@ void MaterialSfile::set_material_properties(std::vector<Sarray> & rhog,
     mEW->material_ic( xisg );
     mEW->material_ic( xipg );
   }
+  MPI_Barrier(MPI_COMM_WORLD); // FIXME - remove after debugging
 }
 
 //-----------------------------------------------------------------------

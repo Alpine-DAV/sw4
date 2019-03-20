@@ -142,7 +142,7 @@ void SfileHDF5::read_sfile_material(const std::string &filename,
     vector<Sarray>& interfaces)
 {
 #ifdef USE_HDF5
-   bool debug=false;
+   bool debug=true;
    int myRank;
    MPI_Comm_rank(MPI_COMM_WORLD, &myRank);
    if (debug)
@@ -192,21 +192,28 @@ void SfileHDF5::read_sfile_material(const std::string &filename,
    int nvars = (model.use_attenuation()) ? 5 : 3;
    float_sw4 bb[3][2];
    calculate_grid_boundingbox(ew, bb); // finest curv domain
+   if (debug)
+   {
+     char msg[1000];
+     sprintf(msg, "Rank %d: bounding box low [%0.2f,%0.2f,%0.2f], high [%0.2f,%0.2f,%0.2f]\n", myRank, bb[0][0], bb[1][0], bb[2][0], 
+         bb[0][1], bb[1][1], bb[2][1]);
+     cout << msg;
+     cout.flush();
+   }
    materials.resize(npatch);
    vector<vector<int> > bbijk(npatch); // For each patch, same layout as bb
-   int nghost = ew.getNumberOfGhostPoints();
-   // int nghost=0; // TODO - fill in ghost points or does MaterialSfile ?
+   // int nghost = ew.getNumberOfGhostPoints();
+   int nghost=0; // TODO - fill in ghost points or does MaterialSfile ?
    calculate_interpolation_patch(materials, nghost, bb, model.m_x0, model.m_y0, 
        h, nvars, patch_nk);
 
    if (debug)
    {
-     cout << "Rank " << myRank << " has interior points:" << endl;
      char msg[1000];
      for (int g=0; g < ew.getNumberOfGrids(); ++g)
      {
-        sprintf(msg, "  grid %d: start [%d,%d,%d], end [%d,%d,%d]\n",
-           g, ew.m_iStartInt[g], ew.m_jStartInt[g], ew.m_kStartInt[g], 
+        sprintf(msg, "Rank %d, grid %d: start [%d,%d,%d], end [%d,%d,%d]\n",
+           myRank, g, ew.m_iStartInt[g], ew.m_jStartInt[g], ew.m_kStartInt[g], 
            ew.m_iEndInt[g], ew.m_jEndInt[g], ew.m_kEndInt[g]);
         cout << msg;
         cout.flush();
@@ -1268,7 +1275,7 @@ void SfileHDF5::read_sfile_material_group(hid_t file_id, hid_t mpiprop_id,
       }
       float mintmp=1e38;
       float maxtmp=-1e38;
-#pragma omp parallel for reduction(min:mintmp) reduction(max:maxtmp)
+// #pragma omp parallel for reduction(min:mintmp) reduction(max:maxtmp)
       for( int i=0 ; i < slice_dims[0]; i++ )
       for( int j=0 ; j < slice_dims[1]; j++ )
       for( int k=0 ; k < slice_dims[2]; k++ )
@@ -1278,6 +1285,22 @@ void SfileHDF5::read_sfile_material_group(hid_t file_id, hid_t mpiprop_id,
          int gj = j + 1 + jb;
          int gk = k + 1 + kb;
          float val = window_array[ijkh5];
+
+         /*
+         bool check = ((gi < data.m_ib) || (gi > data.m_ie) || 
+                       (gj < data.m_jb) || (gj > data.m_je) || 
+                       (gk < data.m_kb) || (gk > data.m_ke));
+          if (debug && check)
+          {
+            char msg[1000];
+            sprintf(msg, "Rank %d, bounds error in patch %d, [%d,%d,%d], with ib=[%d,%d,%d] in slice size=[%d,%d,%d]\n",
+                myRank, p, gi, gj, gk, ib, jb, kb, 
+                (int) slice_dims[0], (int) slice_dims[1], (int) slice_dims[2]); 
+            cout << msg;
+            cout.flush();
+          }
+         */
+
          data(v+1,gi,gj,gk) = val;
          mintmp = min(val, mintmp);
          maxtmp = max(val, maxtmp);
@@ -1290,6 +1313,7 @@ void SfileHDF5::read_sfile_material_group(hid_t file_id, hid_t mpiprop_id,
       ierr = H5Dclose(dataset_id);
       ierr = H5Sclose(dataspace_id);
 
+#if 0
       // TODO - do we need to fill in ghost cells?
       // Copy values into any exterior ghost cells
       int gie = dims[0]; // i index end of domain
@@ -1313,7 +1337,6 @@ void SfileHDF5::read_sfile_material_group(hid_t file_id, hid_t mpiprop_id,
           for (int gj=gje+1; gj <= data.m_je; ++gj) // j high
             data(v+1,gi,gj,gk) = data(v+1,gi,gje,gk);
         }
-#if 0
 #endif
     }
   }
@@ -1372,7 +1395,7 @@ void SfileHDF5::calculate_interpolation_patch(vector<Sarray>& matl,
     int nghost, float_sw4 (&bb)[3][2], float_sw4 x0, float_sw4 y0, 
     float hh, int nvars, vector<int>& patch_nk)
 {
-  bool debug=false;
+  bool debug=true;
   MPI_Comm comm = MPI_COMM_WORLD;
   int myRank;
   MPI_Comm_rank(MPI_COMM_WORLD, &myRank);
@@ -1398,12 +1421,13 @@ void SfileHDF5::calculate_interpolation_patch(vector<Sarray>& matl,
       cout << "Rank " << myRank << " on SW4 domain:" 
         << " x=(" << bb[0][0] << ", " << bb[0][1] << "), "
         << " y=(" << bb[1][0] << ", " << bb[1][1] << "), "
-        << " z=(" << bb[2][0] << ", " << bb[2][1] << "), " << endl;
-      cout << "--> Sfile patch " << p << " grid spacing h=" << h
+        << " z=(" << bb[2][0] << ", " << bb[2][1] << "), " << endl
+        << "--> Sfile patch " << p << " grid spacing h=" << h
         << ", sw4 indices:" << " i=(" << data.m_ib << ", " << data.m_ie << "), "
         << " j=(" << data.m_jb << ", " << data.m_je << "), "
         << " k=(" << data.m_kb << ", " << data.m_ke << "), nghost=" 
         << nghost << endl;
+      cout.flush();
     }
   }
 }
