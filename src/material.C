@@ -150,13 +150,13 @@ void EW::check_materials()
 	for( int j=m_jStart[g] ; j <= m_jEnd[g] ; j++ )
 	  for( int i=m_iStart[g] ; i <= m_iEnd[g] ; i++ )
 	  {
-	    if( mRho[g](i,j,k) <= 0.)
+      /*
+	    if (!(mRho[g](i,j,k) > 0.))
           cout << "Density= " << mRho[g](i,j,k)<< " in grid g= " << g << " at point " 
 			  << " (" << i <<","<<j<<","<<k<<") " << endl;
-      /*
+      */
 	    CHECK_INPUT( mRho[g](i,j,k) > 0., "Density= " << mRho[g](i,j,k)<< " in grid g= " << g << " at point " 
 			  << " (" << i <<","<<j<<","<<k<<") ");
-      */
 	  }
   }
    
@@ -168,6 +168,11 @@ void EW::check_materials()
 	for( int j=m_jStart[g] ; j <= m_jEnd[g] ; j++ )
 	  for( int i=m_iStart[g] ; i <= m_iEnd[g] ; i++ )
 	  {
+      /*
+	    if (!(mMu[g](i,j,k) >= 0.))
+        cout <<  "mu= " << mMu[g](i,j,k)<< " in grid g= " << g << " at point " 
+			  << " (" << i <<","<<j<<","<<k<<") " << endl;
+      */
 	    CHECK_INPUT( mMu[g](i,j,k) >= 0., "mu= " << mMu[g](i,j,k)<< " in grid g= " << g << " at point " 
 			  << " (" << i <<","<<j<<","<<k<<") ");
 	  }
@@ -180,6 +185,11 @@ void EW::check_materials()
 	for( int j=m_jStart[g] ; j <= m_jEnd[g] ; j++ )
 	  for( int i=m_iStart[g] ; i <= m_iEnd[g] ; i++ )
 	  {
+       /*
+	     if (!( mLambda[g](i,j,k) >= la_min_fact*mMu[g](i,j,k)))
+         cout << "lambda= " << mLambda[g](i,j,k)<< " in grid g= " << g 
+           << " at point " << " (" << i <<","<<j<<","<<k<<") " << endl;
+       */
 	     CHECK_INPUT( mLambda[g](i,j,k) >= la_min_fact*mMu[g](i,j,k), "lambda= " << mLambda[g](i,j,k)<< " in grid g= " << g << " at point " 
 			 << " (" << i <<","<<j<<","<<k<<") ");
 	  }
@@ -194,6 +204,11 @@ void EW::check_materials()
 	      for( int j=m_jStart[g] ; j <= m_jEnd[g] ; j++ )
 		 for( int i=m_iStart[g] ; i <= m_iEnd[g] ; i++ )
 		 {
+        /*
+		    if (!( mQs[g](i,j,k) >= 0.))
+          cout << "Qs= " << mQs[g](i,j,k)<< " in grid g= " << g << " at point " 
+				 << " (" << i <<","<<j<<","<<k<<") " << endl;
+        */
 		    CHECK_INPUT( mQs[g](i,j,k) >= 0., "Qs= " << mQs[g](i,j,k)<< " in grid g= " << g << " at point " 
 				 << " (" << i <<","<<j<<","<<k<<") ");
 		 }
@@ -206,6 +221,11 @@ void EW::check_materials()
 	      for( int j=m_jStart[g] ; j <= m_jEnd[g] ; j++ )
 		 for( int i=m_iStart[g] ; i <= m_iEnd[g] ; i++ )
 		 {
+        /*
+		    if (!( mQp[g](i,j,k) >= 0.))
+         cout << "Qp= " << mQp[g](i,j,k)<< " in grid g= " << g << " at point " 
+				 << " (" << i <<","<<j<<","<<k<<") "<<endl;
+         */
 		    CHECK_INPUT( mQp[g](i,j,k) >= 0., "Qp= " << mQp[g](i,j,k)<< " in grid g= " << g << " at point " 
 				 << " (" << i <<","<<j<<","<<k<<") ");
 		 }
