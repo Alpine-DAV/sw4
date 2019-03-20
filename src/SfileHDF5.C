@@ -177,7 +177,7 @@ void SfileHDF5::read_sfile_material(const std::string &filename,
    ew.computeCartesianCoord(model.m_x0, model.m_y0, lonlataz[0], lonlataz[1]);
    int npatch = patch_nk.size();
    ASSERT(npatch > 0);
-   model.m_hh.resize(npatch);
+   model.m_hh.resize(npatch+1); // AP added +1
    for (int p=0; p <= npatch; ++p)
      model.m_hh[p] = h * pow(2,npatch-1-p);
 
