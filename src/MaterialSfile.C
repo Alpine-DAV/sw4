@@ -93,7 +93,6 @@ void MaterialSfile::set_material_properties(std::vector<Sarray> & rhog,
   MPI_Comm comm = MPI_COMM_WORLD;
   int myRank;
   MPI_Comm_rank(MPI_COMM_WORLD, &myRank);
-  MPI_Barrier(MPI_COMM_WORLD); // FIXME - remove after debugging
 
   // Assume attenuation arrays defined on all grids if xp defined on grid zero.
   bool use_q = m_use_attenuation && xipg[0].is_defined();
@@ -120,7 +119,7 @@ void MaterialSfile::set_material_properties(std::vector<Sarray> & rhog,
 
     if (debug)
       cout << "Rank " << myRank << " interpolating grid " << g << endl;
-// #pragma omp parallel for
+#pragma omp parallel for
     for (int gj = mEW->m_jStartInt[g]; gj <= mEW->m_jEndInt[g]; ++gj)
     for (int gi = mEW->m_iStartInt[g]; gi <= mEW->m_iEndInt[g]; ++gi)
     {
@@ -192,12 +191,13 @@ void MaterialSfile::set_material_properties(std::vector<Sarray> & rhog,
             ztop10*wx*(1-wy) + ztop01*(1-wx)*wy + 
             ztop11*wx*wy);
 
-
           // Do the interpolation if it's in range 
-          // OR we're at the top and need to extrapolate?
+          // OR we're at the top and need to copy?
+          // OR we're at the bottom and need to copy?
           bool inz = gz>(ztop-tol) && gz<(zbot+tol);
-          bool attop = g==(ngrids-1) && gk==1 && p==(npatch-1);
-          if (inz || attop)
+          bool attop = g==(ngrids-1) && gk>=1 && p==(npatch-1) && gz<ztop+tol;
+          bool atbot = g==0 && gk<=mEW->m_kEndInt[g] && p==0 && gz>zbot-tol;
+          if (inz || attop || atbot)
           {
             int nk = mMaterial[p].m_ke - mMaterial[p].m_kb + 1;
             float_sw4 hv = (zbot - ztop) / (float_sw4) (nk-1);
@@ -230,8 +230,6 @@ void MaterialSfile::set_material_properties(std::vector<Sarray> & rhog,
             }
             if (outofbounds)
               continue; // Can't use this patch
-#if 0
-#endif // #if 0
             for (int k=0; k < 2; ++k)
             {
               rhoi[k] = mMaterial[p](1,ib,jb,kb+k)*(1-wx)*(1-wy)
@@ -266,7 +264,8 @@ void MaterialSfile::set_material_properties(std::vector<Sarray> & rhog,
               qp(gi,gj,gk) = qpi[0]*(1-wz)+qpi[1]*wz;
               qs(gi,gj,gk) = qsi[0]*(1-wz)+qsi[1]*wz;
             }
-            // if (debug && gi==1 && gj==1)
+            /*
+            if (debug && gi==1 && gj==1)
             {
               char msg[1000];
               sprintf(msg, "Grid %d point [%d,%d,%d], gz=%0.2f, wz=%0.2f, from patch %d, [%d,%d,%d]\n",
@@ -274,8 +273,7 @@ void MaterialSfile::set_material_properties(std::vector<Sarray> & rhog,
               cout << msg;
               cout.flush();
             }
-#if 0
-#endif // #if 0
+            */
             break; // stop looking in patches, go to next gk
           } // hit on gz in patch
         } // p
@@ -295,7 +293,6 @@ void MaterialSfile::set_material_properties(std::vector<Sarray> & rhog,
     mEW->material_ic( xisg );
     mEW->material_ic( xipg );
   }
-  MPI_Barrier(MPI_COMM_WORLD); // FIXME - remove after debugging
 }
 
 //-----------------------------------------------------------------------
