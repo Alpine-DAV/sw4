@@ -642,8 +642,18 @@ void SfileHDF5::write_sfile_interfaces(hid_t file_id, hid_t mpiprop_id,
          cout.flush();
       }
       hid_t window_id = H5Screate_simple(z_dims, slice_dims, NULL);
+      {
+        htri_t itri = H5Iis_valid(window_id);
+        cout << "Rank " << myRank << ((itri<0)?" Bad! ":" Good ") << " line " << __LINE__ << endl;
+        cout.flush();
+      }
       ierr = H5Sselect_hyperslab(dataspace_id, H5S_SELECT_SET, start, NULL,
           slice_dims, NULL);
+      {
+        htri_t itri = H5Iis_valid(window_id);
+        cout << "Rank " << myRank << ((itri<0)?" Bad! ":" Good ") << " line " << __LINE__ << endl;
+        cout.flush();
+      }
       if (ierr < 0)
       {
         cout << "Error from z H5Sselect_hyperslab" << endl;
@@ -657,17 +667,53 @@ void SfileHDF5::write_sfile_interfaces(hid_t file_id, hid_t mpiprop_id,
         cout.flush();
       }
 
-      patch_interface(z_top[p], slice_dims, true, brks, ew);
-      patch_interface(z_bot[p], slice_dims, false, brks, ew);
+      {
+        htri_t itri = H5Iis_valid(window_id);
+        cout << "Rank " << myRank << ((itri<0)?" Bad! ":" Good ") << " line " << __LINE__ << endl;
+        cout.flush();
+      }
+      // patch_interface(z_top[p], slice_dims, true, brks, ew);
+      // patch_interface(z_bot[p], slice_dims, false, brks, ew);
+      {
+        htri_t itri = H5Iis_valid(window_id);
+        cout << "Rank " << myRank << ((itri<0)?" Bad! ":" Good ") << " line " << __LINE__ << endl;
+        cout.flush();
+      }
       float* z_vals = (f!=0) ? z_top[p] : z_bot[p];
+      float tmp = 1e8;
+      for (int i=0; i < npts; i++) // Just to find memory issues?
+        tmp = min(z_vals[i],tmp);
+      {
+        htri_t itri = H5Iis_valid(window_id);
+        cout << "Rank " << myRank << ((itri<0)?" Bad! ":" Good ") << " line " << __LINE__ << endl;
+        cout.flush();
+      }
       hid_t iobj = H5Iis_valid(dataset_id);
       if (iobj < 0)
       {
         cout << "Error from SfileHDF5 dataset corrupted before H5Dwrite " << endl;
         MPI_Abort(comm,iobj);
       }
+      iobj = H5Iis_valid(dataspace_id);
+      if (iobj < 0)
+      {
+        cout << "Error from SfileHDF5 dataspace corrupted before H5Dwrite " << endl;
+        MPI_Abort(comm,iobj);
+      }
+      iobj = H5Iis_valid(window_id);
+      if (iobj < 0)
+      {
+        cout << "Error from SfileHDF5 window corrupted before H5Dwrite " << endl;
+        MPI_Abort(comm,iobj);
+      }
+      iobj = H5Iis_valid(mpiprop_id);
+      if (iobj < 0)
+      {
+        cout << "Error from SfileHDF5 mpiprop corrupted before H5Dwrite " << endl;
+        MPI_Abort(comm,iobj);
+      }
       ierr = H5Dwrite(dataset_id, H5T_IEEE_F32LE, window_id, dataspace_id,
-          mpiprop_id, (f!=0) ? z_top[p] : z_bot[p]);
+          mpiprop_id, z_vals);
       if (ierr < 0)
       {
         cout << "Error from SfileHDF5 topo H5Dwrite " << endl;
