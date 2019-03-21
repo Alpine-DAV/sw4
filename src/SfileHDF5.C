@@ -261,7 +261,7 @@ void SfileHDF5::write_sfile(const std::string &file,
   vector<float_sw4>& mr_depth, int horizontalInterval)
 {
 #ifdef USE_HDF5
-   bool debug = false;
+   bool debug = true;
    // Timers
    double time_start = MPI_Wtime();
 
@@ -526,7 +526,7 @@ void SfileHDF5::write_sfile_interfaces(hid_t file_id, hid_t mpiprop_id,
     EW& ew, vector<vector<sfile_breaks> >& patch_breaks,
     vector<float*>& z_bot, vector<float*>& z_top)
 {
-   const bool debug=false;
+   const bool debug=true;
    MPI_Comm comm = MPI_COMM_WORLD;
    int myRank;
    MPI_Comm_rank(MPI_COMM_WORLD, &myRank);
@@ -574,9 +574,12 @@ void SfileHDF5::write_sfile_interfaces(hid_t file_id, hid_t mpiprop_id,
 
       if (debug)
       {
-         sprintf(msg, "Interface %d, from grid %d index %d \n", f, g, gk);
-         cout << msg;
-         cout.flush();
+        sprintf(msg, "Rank %d, interface %d, from grid %d index %d, indices [%d:%d,%d:%d] in [1:%d,1:%d]\n", 
+            myRank, f, g, gk, ew.m_iStartInt[g], ew.m_iEndInt[g],
+            ew.m_jStartInt[g], ew.m_jEndInt[g], 
+            ew.m_global_nx[g], ew.m_global_ny[g]);
+        cout << msg;
+        cout.flush();
       }
 
       // Z interface values
@@ -672,8 +675,8 @@ void SfileHDF5::write_sfile_interfaces(hid_t file_id, hid_t mpiprop_id,
         cout << "Rank " << myRank << ((itri<0)?" Bad! ":" Good ") << " line " << __LINE__ << endl;
         cout.flush();
       }
-      // patch_interface(z_top[p], slice_dims, true, brks, ew);
-      // patch_interface(z_bot[p], slice_dims, false, brks, ew);
+      patch_interface(z_top[p], slice_dims, npts, true, brks, ew);
+      patch_interface(z_bot[p], slice_dims, npts, false, brks, ew);
       {
         htri_t itri = H5Iis_valid(window_id);
         cout << "Rank " << myRank << ((itri<0)?" Bad! ":" Good ") << " line " << __LINE__ << endl;
@@ -1005,7 +1008,7 @@ void SfileHDF5::material_interpolate(vector<float*>& h5_array,
 }
 
 //-----------------------------------------------------------------------
-void SfileHDF5::patch_interface(float* z, hsize_t (&dims)[2], 
+void SfileHDF5::patch_interface(float* z, hsize_t (&dims)[2], int npts,
     bool top, vector<sfile_breaks>& pbrk, EW& ew)
 {
   int nbrk=pbrk.size();
@@ -1022,6 +1025,7 @@ void SfileHDF5::patch_interface(float* z, hsize_t (&dims)[2],
     for( int j=0 ; j < dims[1]; j++ )
     {
        const size_t ind = j+dims[1]*i; // only 2D slice
+       ASSERT((ind < npts) && (ind >= 0));
        const int gi = (i*brk.hs + ew.m_iStartInt[brk.g]);
        const int gj = (j*brk.hs + ew.m_jStartInt[brk.g]);
        z[ind]= ew.mZ(1,gi,gj,gk);
@@ -1029,10 +1033,12 @@ void SfileHDF5::patch_interface(float* z, hsize_t (&dims)[2],
   }
   else // this is a cartesian interface, fill with a constant z
   {
+#pragma omp parallel for
     for( int i=0 ; i < dims[0]; i++ )
     for( int j=0 ; j < dims[1]; j++ )
     {
        const size_t ind = j+dims[1]*i; // only 2D slice
+       ASSERT((ind < npts) && (ind >= 0));
        z[ind]= ew.m_zmin[brk.g] + (gk-1)*ew.mGridSize[brk.g];
     }
   }
