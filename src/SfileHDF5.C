@@ -660,6 +660,12 @@ void SfileHDF5::write_sfile_interfaces(hid_t file_id, hid_t mpiprop_id,
       patch_interface(z_top[p], slice_dims, true, brks, ew);
       patch_interface(z_bot[p], slice_dims, false, brks, ew);
       float* z_vals = (f!=0) ? z_top[p] : z_bot[p];
+      hid_t iobj = H5Iis_valid(dataset_id);
+      if (iobj < 0)
+      {
+        cout << "Error from SfileHDF5 dataset corrupted before H5Dwrite " << endl;
+        MPI_Abort(comm,iobj);
+      }
       ierr = H5Dwrite(dataset_id, H5T_IEEE_F32LE, window_id, dataspace_id,
           mpiprop_id, (f!=0) ? z_top[p] : z_bot[p]);
       if (ierr < 0)
