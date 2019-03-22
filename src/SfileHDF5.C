@@ -586,16 +586,20 @@ void SfileHDF5::write_sfile_interfaces(hid_t file_id, hid_t mpiprop_id,
       hsize_t z_dims = 2;
       hsize_t slice_dims[2], global_dims[2], chunk_dims[2];
       // This processor's horizontal window, interior points
-      slice_dims[0] = (ew.m_iEndInt[g]-1)/hs - (ew.m_iStartInt[g]-1)/hs + 1;
-      slice_dims[1] = (ew.m_jEndInt[g]-1)/hs - (ew.m_jStartInt[g]-1)/hs + 1;
-      // printf("myRank = %d, ew.m_iEndInt[ig]  = %d , ew.m_iStartInt[ig] = %d \n", myRank, ew.m_iEndInt[ig], ew.m_jStartInt[ig]);
-      global_dims[0] = (ew.m_global_nx[g]-1)/hs + 1;
-      global_dims[1] = (ew.m_global_ny[g]-1)/hs + 1;
-      // All ranks must have the same chunk size
-      // slice_dims[0] = 10;
-      // slice_dims[1] = 10;
-      // chunk_dims[0] = 10;
-      // chunk_dims[1] = 10;
+      int hsib, hsie, hsjb, hsje, hsnx, hsny;
+      hsib = (ew.m_iStartInt[g]-1)/hs+1; // Beginning i of hs patch, 0-based
+      hsie = (ew.m_iEndInt[g]-1)/hs;// End i of hs patch, 0-based
+      hsjb = (ew.m_jStartInt[g]-1)/hs+1; // Beginning j of hs patch, 0-based
+      hsje = (ew.m_jEndInt[g]-1)/hs;// End j of hs patch, 0-based
+      hsnx= (ew.m_global_nx[g]-1)/hs + 1; // nx of hs patch
+      hsny= (ew.m_global_ny[g]-1)/hs + 1; // ny of hs patch
+      slice_dims[0] = hsie - hsib + 1;
+      slice_dims[1] = hsje - hsjb + 1;
+      hsize_t start[2];
+      start[0] = hsib;
+      start[1] = hsjb;
+      global_dims[0] = hsnx;
+      global_dims[1] = hsny;
 
       // Allocate our tmp arrays on first pass
       size_t npts = (size_t)(slice_dims[0] * slice_dims[1]);
@@ -622,8 +626,6 @@ void SfileHDF5::write_sfile_interfaces(hid_t file_id, hid_t mpiprop_id,
            << "Could not create dataset!" << endl;
          MPI_Abort(comm, file_id);
       }
-      // FIXME - Uncomment these lines to see MPI parallel hang
-      // add grid index attribute
       hid_t space_id = H5Screate(H5S_SCALAR);
       hid_t attr_id = H5Acreate(dataset_id, "interface_id", H5T_STD_I32LE,
                                 space_id, H5P_DEFAULT, H5P_DEFAULT);
@@ -631,10 +633,7 @@ void SfileHDF5::write_sfile_interfaces(hid_t file_id, hid_t mpiprop_id,
       ierr = H5Aclose(attr_id);
       ierr = H5Sclose(space_id);
 
-      // TODO - write the data, if topo, or generate for cart
-      hsize_t start[2] = {-1, -1};
-      start[0] = (ew.m_iStartInt[g]-1)/hs + 1 - 1;
-      start[1] = (ew.m_jStartInt[g]-1)/hs + 1 - 1;
+      // Write the data, if topo, or generate for cart
       if (debug)
       {
          sprintf(msg, "Rank %d, selecting grid %d z hyperslab = [%d %d], size [%d,%d] in [%d,%d] \n",
@@ -787,11 +786,22 @@ void SfileHDF5::write_sfile_materials(hid_t file_id, hid_t mpiprop_id, EW& ew,
       int g = brks[0].g; // Should be the first grid, thus the correct rez/pts
       // This processor's horizontal window, interior points only
       int hs = brks[0].hs;
-      slice_dims[0] = (ew.m_iEndInt[g] - ew.m_iStartInt[g]-1)/hs + 1;
-      slice_dims[1] = (ew.m_jEndInt[g] - ew.m_jStartInt[g]-1)/hs + 1;
+      int hsib, hsie, hsjb, hsje, hsnx, hsny;
+      hsib = (ew.m_iStartInt[g]-1)/hs+1; // Beginning i of hs patch, 0-based
+      hsie = (ew.m_iEndInt[g]-1)/hs;// End i of hs patch, 0-based
+      hsjb = (ew.m_jStartInt[g]-1)/hs+1; // Beginning j of hs patch, 0-based
+      hsje = (ew.m_jEndInt[g]-1)/hs;// End j of hs patch, 0-based
+      hsnx= (ew.m_global_nx[g]-1)/hs + 1; // nx of hs patch
+      hsny= (ew.m_global_ny[g]-1)/hs + 1; // ny of hs patch
+      slice_dims[0] = hsie - hsib + 1;
+      slice_dims[1] = hsje - hsjb + 1;
       slice_dims[2] = nk;
-      global_dims[0] = (ew.m_global_nx[g]-1)/hs+1;
-      global_dims[1] = (ew.m_global_ny[g]-1)/hs+1;
+      hsize_t start[3];
+      start[0] = hsib;
+      start[1] = hsjb;
+      start[2] = 0; // write all z values
+      global_dims[0] = hsnx;
+      global_dims[1] = hsny;
       global_dims[2] = nk;
 
       const char *field[] = {"Rho", "Cp", "Cs", "Qp", "Qs"};
@@ -855,10 +865,6 @@ void SfileHDF5::write_sfile_materials(hid_t file_id, hid_t mpiprop_id, EW& ew,
       {
         hid_t dataset_id = H5Dopen2(grid_id, field[v], H5P_DEFAULT);
         hid_t dataspace_id = H5Dget_space(dataset_id);
-        hsize_t start[3]={-1,-1,-1};
-        start[0] = (ew.m_iStartInt[g]-1)/hs + 1 - 1;
-        start[1] = (ew.m_jStartInt[g]-1)/hs + 1 - 1;
-        start[2] = 0; // write all z values
         hid_t window_id = H5Screate_simple(dims, slice_dims, NULL);
         ierr = H5Sselect_hyperslab(dataspace_id, H5S_SELECT_SET, start, 
             NULL, slice_dims, NULL);
