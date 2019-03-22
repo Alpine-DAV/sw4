@@ -111,6 +111,7 @@ protected:
   static void calculate_interpolation_patch(vector<Sarray>& matl, 
       int nghost, float_sw4 (&bb)[3][2], float_sw4 x0, float_sw4 m_y0, 
       float hh, int nvars, vector<int>& patch_nk);
+  static void get_patch_dims( sfile_breaks brk, int& ibeg, int& iend, int& jbeg, int& jend );
 #endif // ifdef USE_HDF5
 
 private:

@@ -261,7 +261,7 @@ void SfileHDF5::write_sfile(const std::string &file,
   vector<float_sw4>& mr_depth, int horizontalInterval)
 {
 #ifdef USE_HDF5
-   bool debug = false;
+   bool debug = true;
    // Timers
    double time_start = MPI_Wtime();
 
@@ -317,15 +317,17 @@ void SfileHDF5::write_sfile(const std::string &file,
    float lonlataz[3] = {ew.getLonOrigin(), ew.getLatOrigin(), 
      ew.getGridAzimuth()};
    // Patches are in bottom-up order, patch_breaks interfaces are top-down
+   //   cout << "before header write" << endl;
    write_sfile_header(file_id, mpiprop_id, h, lonlataz, patch_nk);
-
+   //   cout << "after header write" << endl;
    vector<float*> z_bot, z_top;
    write_sfile_interfaces(file_id, mpiprop_id, ew, patch_breaks, z_bot, z_top);
+   //   cout << "after interfaces write" << endl;
    ASSERT((z_bot.size() == npatch) && (z_top.size() == npatch));
 
    write_sfile_materials(file_id, mpiprop_id, ew, model, patch_breaks, 
        patch_nk, z_bot, z_top);
-
+   //   cout << "after materials write" << endl;
    for (int i=0; i<z_bot.size(); ++i)
    {
      delete[] z_bot[i];
@@ -522,6 +524,21 @@ void SfileHDF5::write_sfile_header(hid_t file_id, hid_t mpiprop_id,
 }
 
 //-----------------------------------------------------------------------
+void SfileHDF5::get_patch_dims( sfile_breaks brk, int& ibeg, int& iend, int& jbeg, int& jend )
+{
+   if( (brk.ib-1) % brk.hs == 0 )
+      ibeg = (brk.ib-1)/brk.hs;
+   else
+      ibeg = (brk.ib-1)/brk.hs+1;
+   if( (brk.jb-1) % brk.hs == 0 )
+      jbeg = (brk.jb-1)/brk.hs;
+   else
+      jbeg = (brk.jb-1)/brk.hs+1;
+   iend = (brk.ie-1)/brk.hs;
+   jend = (brk.je-1)/brk.hs;
+}
+
+//-----------------------------------------------------------------------
 void SfileHDF5::write_sfile_interfaces(hid_t file_id, hid_t mpiprop_id, 
     EW& ew, vector<vector<sfile_breaks> >& patch_breaks,
     vector<float*>& z_bot, vector<float*>& z_top)
@@ -583,8 +600,13 @@ void SfileHDF5::write_sfile_interfaces(hid_t file_id, hid_t mpiprop_id,
       hsize_t z_dims = 2;
       hsize_t slice_dims[2], global_dims[2], chunk_dims[2];
       // This processor's horizontal window, interior points
-      slice_dims[0] = (ew.m_iEndInt[g]-1)/hs - (ew.m_iStartInt[g]-1)/hs + 1;
-      slice_dims[1] = (ew.m_jEndInt[g]-1)/hs - (ew.m_jStartInt[g]-1)/hs + 1;
+      int ibeg, iend, jbeg, jend;
+      get_patch_dims( brks[0], ibeg, iend, jbeg, jend );
+
+      slice_dims[0] = iend-ibeg+1;
+      slice_dims[1] = jend-jbeg+1;
+      //      slice_dims[0] = ((ew.m_iEndInt[g]-1) - (ew.m_iStartInt[g]-1))/hs + 1;
+      //      slice_dims[1] = ((ew.m_jEndInt[g]-1) - (ew.m_jStartInt[g]-1))/hs + 1;
       // printf("myRank = %d, ew.m_iEndInt[ig]  = %d , ew.m_iStartInt[ig] = %d \n", myRank, ew.m_iEndInt[ig], ew.m_jStartInt[ig]);
       global_dims[0] = (ew.m_global_nx[g]-1)/hs + 1;
       global_dims[1] = (ew.m_global_ny[g]-1)/hs + 1;
@@ -732,8 +754,14 @@ void SfileHDF5::write_sfile_materials(hid_t file_id, hid_t mpiprop_id, EW& ew,
       int g = brks[0].g; // Should be the first grid, thus the correct rez/pts
       // This processor's horizontal window, interior points only
       int hs = brks[0].hs;
-      slice_dims[0] = (ew.m_iEndInt[g]-1)/hs - (ew.m_iStartInt[g]-1)/hs + 1;
-      slice_dims[1] = (ew.m_jEndInt[g]-1)/hs - (ew.m_jStartInt[g]-1)/hs + 1;
+      int ibeg, iend, jbeg, jend;
+      get_patch_dims( brks[0], ibeg, iend, jbeg, jend );
+
+      slice_dims[0] = iend-ibeg+1;
+      slice_dims[1] = jend-jbeg+1;
+
+      //      slice_dims[0] = ((ew.m_iEndInt[g]-1) - (ew.m_iStartInt[g]-1))/hs + 1;
+      //      slice_dims[1] = ((ew.m_jEndInt[g]-1) - (ew.m_jStartInt[g]-1))/hs + 1;
       slice_dims[2] = nk;
       global_dims[0] = (ew.m_global_nx[g]-1)/hs+1;
       global_dims[1] = (ew.m_global_ny[g]-1)/hs+1;
@@ -774,19 +802,21 @@ void SfileHDF5::write_sfile_materials(hid_t file_id, hid_t mpiprop_id, EW& ew,
         brk.jb = ew.m_jStartInt[g];
         brk.je = ew.m_jEndInt[g];
         // Interopolate all variables
+	//	cout << myRank << "brks="<< b << " p="<< p << " g="<< g << endl;
         Sarray* z = (ew.m_topography_exists && (g==ngrids-1)) ? &(ew.mZ) : NULL;
         material_interpolate(h5_array, z_bot[p], z_top[p], 
             slice_dims, brk, z, ew.m_zmin[g], ew.mGridSize[g], 
             Cs_min[p], Cs_max[p],
             ew.mRho[g], ew.mMu[g], ew.mLambda[g], ew.mQp[g], ew.mQs[g]);
         // Don't need this? koffset += (slice_dims[2]-1); // For overlap
+	//	cout << myRank << " Exit brks="<< b << " p="<< p << " g="<< g << endl;
       }
 
       // TODO - calculate global Cs min/max with MPI
 
       float Cs_min_glb[npatch], Cs_max_glb[npatch];
-      MPI_Reduce(Cs_min, Cs_min_glb, 4, MPI_FLOAT, MPI_MIN, 0, MPI_COMM_WORLD );
-      MPI_Reduce(Cs_max, Cs_max_glb, 4, MPI_FLOAT, MPI_MAX, 0, MPI_COMM_WORLD );
+      MPI_Reduce(Cs_min, Cs_min_glb, npatch, MPI_FLOAT, MPI_MIN, 0, MPI_COMM_WORLD );
+      MPI_Reduce(Cs_max, Cs_max_glb, npatch, MPI_FLOAT, MPI_MAX, 0, MPI_COMM_WORLD );
       if (myRank == 0)
         cout << "Material sfile patch " << p << " min Cs=" << Cs_min_glb[p] 
           << ", max Cs=" << Cs_max_glb[p] << endl;
@@ -850,7 +880,6 @@ void SfileHDF5::write_sfile_materials(hid_t file_id, hid_t mpiprop_id, EW& ew,
    ierr = H5Gclose(group_id); // Material_model group
 }
 
-
 //-----------------------------------------------------------------------
 void SfileHDF5::material_interpolate(vector<float*>& h5_array,
     float* zbot, float* ztop, hsize_t (&slice_dims)[3],
@@ -863,23 +892,53 @@ void SfileHDF5::material_interpolate(vector<float*>& h5_array,
   const int nk = slice_dims[2];
   const int nvars = h5_array.size();
   // Loop over the grid, if we've stepped over a patch k point fill it in
+  int myRank;
+   MPI_Comm_rank(MPI_COMM_WORLD, &myRank);
+   //   if( myRank == 1 )
+   //   {
+   //      cout << "slice dims " << slice_dims[0] << " " << slice_dims[1] << " " << slice_dims[2] << endl;
+   //      cout << "brks dims" << brk.ib << " " << brk.ie << " " << brk.jb << " " << brk.je << " " << brk.kb << " " << brk.ke << endl;
+   //  cout << " brk size " << brk.hs << " " << brk.vs << " " << brk.p << " " << brk.g << endl;
+   //  cout <<"zbot " << zbot << " ztop = " << ztop << endl;
+   //   }
+   int ibeg, jbeg, iend, jend;
+   if( (brk.ib-1) % brk.hs == 0 )
+      ibeg = (brk.ib-1)/brk.hs;
+   else
+      ibeg = (brk.ib-1)/brk.hs+1;
+   if( (brk.jb-1) % brk.hs == 0 )
+      jbeg = (brk.jb-1)/brk.hs;
+   else
+      jbeg = (brk.jb-1)/brk.hs+1;
+   iend = (brk.ie-1)/brk.hs;
+   jend = (brk.je-1)/brk.hs;
+
 #pragma omp parallel for reduction(max:Cs_max) reduction(min:Cs_min)
-  for (int j=0; j < slice_dims[1]; ++j)
-    for (int i=0; i < slice_dims[0]; ++i)
+   for( int j=0 ; j < jend-jbeg+1 ;j++ )
+      for( int i=0 ; i < iend-ibeg+1 ;i++ )
+   //  for (int j=0; j < slice_dims[1]; ++j)
+   //    for (int i=0; i < slice_dims[0]; ++i)
     {
-      bool debug = false && (i==0) && (j==0);
-      int gi = brk.ib + i*brk.hs;
-      int gj = brk.jb + j*brk.hs;
+       //      bool debug =  myRank==1 && (i==0) && (j==0);
+       //       bool debug= myRank ==1;
+       bool debug=false;
+       //      int gi = brk.ib + i*brk.hs;
+       //      int gj = brk.jb + j*brk.hs;
+       int gi = (i+ibeg)*brk.hs+1;
+       int gj = (j+jbeg)*brk.hs+1;
       size_t ijh5 = j + slice_dims[1]*i;
       float zt = ztop[ijh5]; // smaller positive value of depth at top
       float zb = zbot[ijh5];
       float h = (zb - zt) / (float) (nk-1);
-      if (debug)
-        cout << "grid=" << brk.g << ", zt=" << zt
-          << ", zb=" << zb << ", h=" << h << endl;
+      //      if (debug)
+      //        cout << "grid=" << brk.g << ", zt=" << zt
+      //          << ", zb=" << zb << ", h=" << h << endl;
+
       // Walk every point, identify if we can interpolate from grid
       for (int gk=brk.kb; gk < brk.ke; ++gk)
       {
+	 if( debug )
+	    cout << "gk-loop start " << gk << " gi,gj= " << gi << " " << gj << endl;
         float gz0 = (topo) ? gridz->Sarray::operator()(gi,gj,gk) 
           : (zmin + (gk-1)*gridh);
         float gz1 = (topo) ? gridz->Sarray::operator()(gi,gj,gk+1) 
@@ -911,6 +970,12 @@ void SfileHDF5::material_interpolate(vector<float*>& h5_array,
         for (int k=kmin; k <= kmax; ++k)
         {
           // Do the interpolation to this k point
+	   if( debug )
+	   {
+	      cout << "i,j,k= " << i<<" " << j << " " << k << " (gi,gj,gk)=" << gi << " " << gj << " " << gk << endl;
+	      cout << "array bounds " << grho.m_ib << " " << grho.m_ie << " " << grho.m_jb <<
+		 " " << grho.m_je << " " << grho.m_kb << " " << grho.m_ke << endl;
+	   }
           float t = (zt + k*h - gz0) / (gz1 - gz0);
           float rho = (1-t)*grho(gi,gj,gk)+t*grho(gi,gj,gk+1);
           float mu = (1-t)*gmu(gi,gj,gk)+t*gmu(gi,gj,gk+1);
@@ -930,6 +995,7 @@ void SfileHDF5::material_interpolate(vector<float*>& h5_array,
             h5_array[3][ijkh5]=qp; // qp, comp 3
             h5_array[4][ijkh5]=qs; // qs, comp 4
           }
+ 	 if( debug )												             cout << " exit k"<<k<<endl;
         }
       }
 #if 0

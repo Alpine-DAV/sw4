@@ -151,7 +151,8 @@ ifeq ($(openmp),no)
 else
    debugdir := $(debugdir)_mp
    optdir   := $(optdir)_mp
-   CXXFLAGS += -Xpreprocessor -fopenmp
+#   CXXFLAGS += -Xpreprocessor -fopenmp
+   CXXFLAGS += -fopenmp
    FFLAGS   += -fopenmp
 endif
 
