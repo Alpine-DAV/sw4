@@ -1,0 +1,49 @@
+# SW4 input
+
+# using parallel i/o
+fileio path=entire-usgs-h200 pfs=1 nwriters=32
+# not using parallel io
+#fileio path=material-model-h100
+
+grid x=289600 y=140000 z=44800 h=200 lon=-122.5623650935 lat=39.17450494695 az=143.6380001671 proj=tmerc datum=NAD83 lon_p=-123.0 lat_p=35.0 scale=0.9996
+
+time steps=0
+
+# Earth Model
+attenuation
+
+# Rfile USGS 3D model + topography
+# rfile filename=USGSBayAreaVM-08.3.0-corder.rfile directory=/project/projectdirs/m3354
+# topography input=rfile zmax=5000 order=2 file=/project/projectdirs/m3354/USGSBayAreaVM-08.3.0-corder.rfile
+# refinement zmax=6387.5 # hv=200 for z > zmax in the rfile model
+
+# For sfile writing
+# h400 inputs
+rfile filename=USGSBayAreaVM-08.3.0-corder.rfile directory=/project/projectdirs/m3354
+sfile filename=entire-usgs-h200.sfile mode=write horizontalInterval=1 depths=2000,6387.5
+refinement zmax=6387.5
+# sfile filename=entire-usgs.sfile mode=write horizontalInterval=4 depths=500,2000,6387.5
+# refinement zmax=6387.5 # hv=200 for z > zmax in the rfile model
+topography input=rfile zmax=5000 order=2 file=/project/projectdirs/m3354/USGSBayAreaVM-08.3.0-corder.rfile
+
+# 1 source to make SW4 happy
+source x=50e3 y=50e3 depth=3e3
+
+# Image output z=0 (make sure you are on a parallel file system if fileio pio=1
+image z=0 mode=qp file=image cycle=0
+image z=0 mode=qs file=image cycle=0
+image z=0 mode=p file=image cycle=0
+image z=0 mode=s file=image cycle=0
+image z=0 mode=rho file=image cycle=0
+# image z=1000 mode=s file=image cycle=0
+# image z=2000 mode=s file=image cycle=0
+# image z=5000 mode=s file=image cycle=0
+image z=0 mode=lat file=image cycle=0
+image z=0 mode=lon file=image cycle=0
+image z=0 mode=topo file=image cycle=0
+
+image y=64000 cycle=0 mode=rho
+image y=64000 cycle=0 mode=p
+image y=64000 cycle=0 mode=s
+image y=64000 cycle=0 mode=qp
+image y=64000 cycle=0 mode=qs
