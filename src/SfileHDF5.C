@@ -787,8 +787,8 @@ void SfileHDF5::write_sfile_materials(hid_t file_id, hid_t mpiprop_id, EW& ew,
       int g = brks[0].g; // Should be the first grid, thus the correct rez/pts
       // This processor's horizontal window, interior points only
       int hs = brks[0].hs;
-      slice_dims[0] = (ew.m_iEndInt[g]-1)/hs - (ew.m_iStartInt[g]-1)/hs + 1;
-      slice_dims[1] = (ew.m_jEndInt[g]-1)/hs - (ew.m_jStartInt[g]-1)/hs + 1;
+      slice_dims[0] = (ew.m_iEndInt[g] - ew.m_iStartInt[g]-1)/hs + 1;
+      slice_dims[1] = (ew.m_jEndInt[g] - ew.m_jStartInt[g]-1)/hs + 1;
       slice_dims[2] = nk;
       global_dims[0] = (ew.m_global_nx[g]-1)/hs+1;
       global_dims[1] = (ew.m_global_ny[g]-1)/hs+1;
@@ -840,8 +840,8 @@ void SfileHDF5::write_sfile_materials(hid_t file_id, hid_t mpiprop_id, EW& ew,
       // TODO - calculate global Cs min/max with MPI
 
       float Cs_min_glb[npatch], Cs_max_glb[npatch];
-      MPI_Reduce(Cs_min, Cs_min_glb, 4, MPI_FLOAT, MPI_MIN, 0, MPI_COMM_WORLD );
-      MPI_Reduce(Cs_max, Cs_max_glb, 4, MPI_FLOAT, MPI_MAX, 0, MPI_COMM_WORLD );
+      MPI_Reduce(Cs_min, Cs_min_glb, npatch, MPI_FLOAT, MPI_MIN, 0, MPI_COMM_WORLD );
+      MPI_Reduce(Cs_max, Cs_max_glb, npatch, MPI_FLOAT, MPI_MAX, 0, MPI_COMM_WORLD );
       if (myRank == 0)
         cout << "Material sfile patch " << p << " min Cs=" << Cs_min_glb[p] 
           << ", max Cs=" << Cs_max_glb[p] << endl;
@@ -1011,6 +1011,12 @@ void SfileHDF5::material_interpolate(vector<float*>& h5_array,
 void SfileHDF5::patch_interface(float* z, hsize_t (&dims)[2], int npts,
     bool top, vector<sfile_breaks>& pbrk, EW& ew)
 {
+  const bool debug=true;
+  MPI_Comm comm = MPI_COMM_WORLD;
+  int myRank;
+  MPI_Comm_rank(MPI_COMM_WORLD, &myRank);
+  char msg[1000];
+
   int nbrk=pbrk.size();
   sfile_breaks& brk = (top) ? pbrk[0] : pbrk[nbrk-1];
   int gk = (top) ? brk.kb : brk.ke;
@@ -1019,7 +1025,13 @@ void SfileHDF5::patch_interface(float* z, hsize_t (&dims)[2], int npts,
   int ngrids = ew.mNumberOfGrids;
   if (ew.m_topography_exists && (brk.g==(ngrids-1)))
   {
-    // cout << "Interface " << g << ", copying from grid " << ig << ", index " << k << endl;
+    if (debug)
+    {
+      sprintf(msg,"Rank %d, grid %d index %d, writing %d values in size [%d,%d], with hs=%d\n",
+          myRank, brk.g, gk, npts, dims[0], dims[1], brk.hs);
+      cout << msg;
+      cout.flush();
+    }
 #pragma omp parallel for
     for( int i=0 ; i < dims[0]; i++ )
     for( int j=0 ; j < dims[1]; j++ )
@@ -1033,6 +1045,13 @@ void SfileHDF5::patch_interface(float* z, hsize_t (&dims)[2], int npts,
   }
   else // this is a cartesian interface, fill with a constant z
   {
+    if (debug)
+    {
+      sprintf(msg,"Rank %d, grid %d index %d, writing %d values in size [%d,%d], with hs=%d\n",
+          myRank, brk.g, gk, npts, dims[0], dims[1], brk.hs);
+      cout << msg;
+      cout.flush();
+    }
 #pragma omp parallel for
     for( int i=0 ; i < dims[0]; i++ )
     for( int j=0 ; j < dims[1]; j++ )
