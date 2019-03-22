@@ -177,7 +177,7 @@ void SfileHDF5::read_sfile_material(const std::string &filename,
    ew.computeCartesianCoord(model.m_x0, model.m_y0, lonlataz[0], lonlataz[1]);
    int npatch = patch_nk.size();
    ASSERT(npatch > 0);
-   model.m_hh.resize(npatch);
+   model.m_hh.resize(npatch+1); // AP added +1
    for (int p=0; p <= npatch; ++p)
      model.m_hh[p] = h * pow(2,npatch-1-p);
 
@@ -543,7 +543,7 @@ void SfileHDF5::write_sfile_interfaces(hid_t file_id, hid_t mpiprop_id,
     EW& ew, vector<vector<sfile_breaks> >& patch_breaks,
     vector<float*>& z_bot, vector<float*>& z_top)
 {
-   const bool debug=false;
+   const bool debug=true;
    MPI_Comm comm = MPI_COMM_WORLD;
    int myRank;
    MPI_Comm_rank(MPI_COMM_WORLD, &myRank);
@@ -591,15 +591,19 @@ void SfileHDF5::write_sfile_interfaces(hid_t file_id, hid_t mpiprop_id,
 
       if (debug)
       {
-         sprintf(msg, "Interface %d, from grid %d index %d \n", f, g, gk);
-         cout << msg;
-         cout.flush();
+        sprintf(msg, "Rank %d, interface %d, from grid %d index %d, indices [%d:%d,%d:%d] in [1:%d,1:%d]\n", 
+            myRank, f, g, gk, ew.m_iStartInt[g], ew.m_iEndInt[g],
+            ew.m_jStartInt[g], ew.m_jEndInt[g], 
+            ew.m_global_nx[g], ew.m_global_ny[g]);
+        cout << msg;
+        cout.flush();
       }
 
       // Z interface values
       hsize_t z_dims = 2;
       hsize_t slice_dims[2], global_dims[2], chunk_dims[2];
       // This processor's horizontal window, interior points
+
       int ibeg, iend, jbeg, jend;
       get_patch_dims( brks[0], ibeg, iend, jbeg, jend );
 
@@ -610,6 +614,10 @@ void SfileHDF5::write_sfile_interfaces(hid_t file_id, hid_t mpiprop_id,
       // printf("myRank = %d, ew.m_iEndInt[ig]  = %d , ew.m_iStartInt[ig] = %d \n", myRank, ew.m_iEndInt[ig], ew.m_jStartInt[ig]);
       global_dims[0] = (ew.m_global_nx[g]-1)/hs + 1;
       global_dims[1] = (ew.m_global_ny[g]-1)/hs + 1;
+      hsize_t start[3];
+      start[0] = ibeg;
+      start[1] = jbeg;
+      start[2] = 0;
       // All ranks must have the same chunk size
       // slice_dims[0] = 10;
       // slice_dims[1] = 10;
@@ -641,8 +649,6 @@ void SfileHDF5::write_sfile_interfaces(hid_t file_id, hid_t mpiprop_id,
            << "Could not create dataset!" << endl;
          MPI_Abort(comm, file_id);
       }
-      // FIXME - Uncomment these lines to see MPI parallel hang
-      // add grid index attribute
       hid_t space_id = H5Screate(H5S_SCALAR);
       hid_t attr_id = H5Acreate(dataset_id, "interface_id", H5T_STD_I32LE,
                                 space_id, H5P_DEFAULT, H5P_DEFAULT);
@@ -650,10 +656,7 @@ void SfileHDF5::write_sfile_interfaces(hid_t file_id, hid_t mpiprop_id,
       ierr = H5Aclose(attr_id);
       ierr = H5Sclose(space_id);
 
-      // TODO - write the data, if topo, or generate for cart
-      hsize_t start[2] = {-1, -1};
-      start[0] = (ew.m_iStartInt[g]-1)/hs + 1 - 1;
-      start[1] = (ew.m_jStartInt[g]-1)/hs + 1 - 1;
+      // Write the data, if topo, or generate for cart
       if (debug)
       {
          sprintf(msg, "Rank %d, selecting grid %d z hyperslab = [%d %d], size [%d,%d] in [%d,%d] \n",
@@ -664,8 +667,18 @@ void SfileHDF5::write_sfile_interfaces(hid_t file_id, hid_t mpiprop_id,
          cout.flush();
       }
       hid_t window_id = H5Screate_simple(z_dims, slice_dims, NULL);
+      {
+        htri_t itri = H5Iis_valid(window_id);
+        cout << "Rank " << myRank << ((itri<0)?" Bad! ":" Good ") << " line " << __LINE__ << endl;
+        cout.flush();
+      }
       ierr = H5Sselect_hyperslab(dataspace_id, H5S_SELECT_SET, start, NULL,
           slice_dims, NULL);
+      {
+        htri_t itri = H5Iis_valid(window_id);
+        cout << "Rank " << myRank << ((itri<0)?" Bad! ":" Good ") << " line " << __LINE__ << endl;
+        cout.flush();
+      }
       if (ierr < 0)
       {
         cout << "Error from z H5Sselect_hyperslab" << endl;
@@ -679,11 +692,53 @@ void SfileHDF5::write_sfile_interfaces(hid_t file_id, hid_t mpiprop_id,
         cout.flush();
       }
 
-      patch_interface(z_top[p], slice_dims, true, brks, ew);
-      patch_interface(z_bot[p], slice_dims, false, brks, ew);
+      {
+        htri_t itri = H5Iis_valid(window_id);
+        cout << "Rank " << myRank << ((itri<0)?" Bad! ":" Good ") << " line " << __LINE__ << endl;
+        cout.flush();
+      }
+      patch_interface(z_top[p], slice_dims, npts, true, brks, ew);
+      patch_interface(z_bot[p], slice_dims, npts, false, brks, ew);
+      {
+        htri_t itri = H5Iis_valid(window_id);
+        cout << "Rank " << myRank << ((itri<0)?" Bad! ":" Good ") << " line " << __LINE__ << endl;
+        cout.flush();
+      }
       float* z_vals = (f!=0) ? z_top[p] : z_bot[p];
+      float tmp = 1e8;
+      for (int i=0; i < npts; i++) // Just to find memory issues?
+        tmp = min(z_vals[i],tmp);
+      {
+        htri_t itri = H5Iis_valid(window_id);
+        cout << "Rank " << myRank << ((itri<0)?" Bad! ":" Good ") << " line " << __LINE__ << endl;
+        cout.flush();
+      }
+      hid_t iobj = H5Iis_valid(dataset_id);
+      if (iobj < 0)
+      {
+        cout << "Error from SfileHDF5 dataset corrupted before H5Dwrite " << endl;
+        MPI_Abort(comm,iobj);
+      }
+      iobj = H5Iis_valid(dataspace_id);
+      if (iobj < 0)
+      {
+        cout << "Error from SfileHDF5 dataspace corrupted before H5Dwrite " << endl;
+        MPI_Abort(comm,iobj);
+      }
+      iobj = H5Iis_valid(window_id);
+      if (iobj < 0)
+      {
+        cout << "Error from SfileHDF5 window corrupted before H5Dwrite " << endl;
+        MPI_Abort(comm,iobj);
+      }
+      iobj = H5Iis_valid(mpiprop_id);
+      if (iobj < 0)
+      {
+        cout << "Error from SfileHDF5 mpiprop corrupted before H5Dwrite " << endl;
+        MPI_Abort(comm,iobj);
+      }
       ierr = H5Dwrite(dataset_id, H5T_IEEE_F32LE, window_id, dataspace_id,
-          mpiprop_id, (f!=0) ? z_top[p] : z_bot[p]);
+          mpiprop_id, z_vals);
       if (ierr < 0)
       {
         cout << "Error from SfileHDF5 topo H5Dwrite " << endl;
@@ -754,6 +809,7 @@ void SfileHDF5::write_sfile_materials(hid_t file_id, hid_t mpiprop_id, EW& ew,
       int g = brks[0].g; // Should be the first grid, thus the correct rez/pts
       // This processor's horizontal window, interior points only
       int hs = brks[0].hs;
+
       int ibeg, iend, jbeg, jend;
       get_patch_dims( brks[0], ibeg, iend, jbeg, jend );
 
@@ -762,9 +818,20 @@ void SfileHDF5::write_sfile_materials(hid_t file_id, hid_t mpiprop_id, EW& ew,
 
       //      slice_dims[0] = ((ew.m_iEndInt[g]-1) - (ew.m_iStartInt[g]-1))/hs + 1;
       //      slice_dims[1] = ((ew.m_jEndInt[g]-1) - (ew.m_jStartInt[g]-1))/hs + 1;
+
       slice_dims[2] = nk;
-      global_dims[0] = (ew.m_global_nx[g]-1)/hs+1;
-      global_dims[1] = (ew.m_global_ny[g]-1)/hs+1;
+      hsize_t start[3];
+      //      start[0] = hsib;
+      //      start[1] = hsjb;
+      start[0] = ibeg;
+      start[1] = jbeg;
+      start[2] = 0; // write all z values
+
+      global_dims[0] = (ew.m_global_nx[g]-1)/hs + 1;
+      global_dims[1] = (ew.m_global_ny[g]-1)/hs + 1;
+
+      //      global_dims[0] = hsnx;
+      //      global_dims[1] = hsny;
       global_dims[2] = nk;
 
       const char *field[] = {"Rho", "Cp", "Cs", "Qp", "Qs"};
@@ -830,10 +897,6 @@ void SfileHDF5::write_sfile_materials(hid_t file_id, hid_t mpiprop_id, EW& ew,
       {
         hid_t dataset_id = H5Dopen2(grid_id, field[v], H5P_DEFAULT);
         hid_t dataspace_id = H5Dget_space(dataset_id);
-        hsize_t start[3]={-1,-1,-1};
-        start[0] = (ew.m_iStartInt[g]-1)/hs + 1 - 1;
-        start[1] = (ew.m_jStartInt[g]-1)/hs + 1 - 1;
-        start[2] = 0; // write all z values
         hid_t window_id = H5Screate_simple(dims, slice_dims, NULL);
         ierr = H5Sselect_hyperslab(dataspace_id, H5S_SELECT_SET, start, 
             NULL, slice_dims, NULL);
@@ -901,17 +964,8 @@ void SfileHDF5::material_interpolate(vector<float*>& h5_array,
    //  cout << " brk size " << brk.hs << " " << brk.vs << " " << brk.p << " " << brk.g << endl;
    //  cout <<"zbot " << zbot << " ztop = " << ztop << endl;
    //   }
-   int ibeg, jbeg, iend, jend;
-   if( (brk.ib-1) % brk.hs == 0 )
-      ibeg = (brk.ib-1)/brk.hs;
-   else
-      ibeg = (brk.ib-1)/brk.hs+1;
-   if( (brk.jb-1) % brk.hs == 0 )
-      jbeg = (brk.jb-1)/brk.hs;
-   else
-      jbeg = (brk.jb-1)/brk.hs+1;
-   iend = (brk.ie-1)/brk.hs;
-   jend = (brk.je-1)/brk.hs;
+   int ibeg, iend, jbeg, jend;
+   get_patch_dims( brk, ibeg, iend, jbeg, jend );
 
 #pragma omp parallel for reduction(max:Cs_max) reduction(min:Cs_min)
    for( int j=0 ; j < jend-jbeg+1 ;j++ )
@@ -995,7 +1049,6 @@ void SfileHDF5::material_interpolate(vector<float*>& h5_array,
             h5_array[3][ijkh5]=qp; // qp, comp 3
             h5_array[4][ijkh5]=qs; // qs, comp 4
           }
- 	 if( debug )												             cout << " exit k"<<k<<endl;
         }
       }
 #if 0
@@ -1019,9 +1072,15 @@ void SfileHDF5::material_interpolate(vector<float*>& h5_array,
 }
 
 //-----------------------------------------------------------------------
-void SfileHDF5::patch_interface(float* z, hsize_t (&dims)[2], 
+void SfileHDF5::patch_interface(float* z, hsize_t (&dims)[2], int npts,
     bool top, vector<sfile_breaks>& pbrk, EW& ew)
 {
+  const bool debug=true;
+  MPI_Comm comm = MPI_COMM_WORLD;
+  int myRank;
+  MPI_Comm_rank(MPI_COMM_WORLD, &myRank);
+  char msg[1000];
+
   int nbrk=pbrk.size();
   sfile_breaks& brk = (top) ? pbrk[0] : pbrk[nbrk-1];
   int gk = (top) ? brk.kb : brk.ke;
@@ -1030,12 +1089,19 @@ void SfileHDF5::patch_interface(float* z, hsize_t (&dims)[2],
   int ngrids = ew.mNumberOfGrids;
   if (ew.m_topography_exists && (brk.g==(ngrids-1)))
   {
-    // cout << "Interface " << g << ", copying from grid " << ig << ", index " << k << endl;
+    if (debug)
+    {
+      sprintf(msg,"Rank %d, grid %d index %d, writing %d values in size [%d,%d], with hs=%d\n",
+          myRank, brk.g, gk, npts, dims[0], dims[1], brk.hs);
+      cout << msg;
+      cout.flush();
+    }
 #pragma omp parallel for
     for( int i=0 ; i < dims[0]; i++ )
     for( int j=0 ; j < dims[1]; j++ )
     {
        const size_t ind = j+dims[1]*i; // only 2D slice
+       ASSERT((ind < npts) && (ind >= 0));
        const int gi = (i*brk.hs + ew.m_iStartInt[brk.g]);
        const int gj = (j*brk.hs + ew.m_jStartInt[brk.g]);
        z[ind]= ew.mZ(1,gi,gj,gk);
@@ -1043,10 +1109,19 @@ void SfileHDF5::patch_interface(float* z, hsize_t (&dims)[2],
   }
   else // this is a cartesian interface, fill with a constant z
   {
+    if (debug)
+    {
+      sprintf(msg,"Rank %d, grid %d index %d, writing %d values in size [%d,%d], with hs=%d\n",
+          myRank, brk.g, gk, npts, dims[0], dims[1], brk.hs);
+      cout << msg;
+      cout.flush();
+    }
+#pragma omp parallel for
     for( int i=0 ; i < dims[0]; i++ )
     for( int j=0 ; j < dims[1]; j++ )
     {
        const size_t ind = j+dims[1]*i; // only 2D slice
+       ASSERT((ind < npts) && (ind >= 0));
        z[ind]= ew.m_zmin[brk.g] + (gk-1)*ew.mGridSize[brk.g];
     }
   }
