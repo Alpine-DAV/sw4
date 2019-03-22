@@ -99,7 +99,7 @@ protected:
       sfile_breaks& brk, Sarray* z, float zmin, float gridh,
       float& Cs_min, float& Cs_max,
       Sarray& rho, Sarray& mu, Sarray& lambda, Sarray& qp, Sarray& qs);
-  static void patch_interface(float* z, hsize_t (&dims)[2], int npts,
+  static void patch_interface(float* z, hsize_t (&dims)[2],
       bool top, vector<sfile_breaks>& pbrk, EW& ew);
   static void read_sfile_header(hid_t file_id, hid_t mpiprop_id, 
       float& h, float (&lonlataz)[3], vector<int>& patch_nk);
@@ -111,6 +111,8 @@ protected:
   static void calculate_interpolation_patch(vector<Sarray>& matl, 
       int nghost, float_sw4 (&bb)[3][2], float_sw4 x0, float_sw4 m_y0, 
       float hh, int nvars, vector<int>& patch_nk);
+  static void get_patch_dims(sfile_breaks brk, int& ibeg, int& iend, 
+      int& jbeg, int& jend);
 #endif // ifdef USE_HDF5
 
 private:
