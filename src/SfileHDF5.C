@@ -524,6 +524,24 @@ void SfileHDF5::write_sfile_header(hid_t file_id, hid_t mpiprop_id,
 }
 
 //-----------------------------------------------------------------------
+void SfileHDF5::get_patch_dims_2( EW& ew, int g, int hs, int& ibeg, int& iend, int& jbeg, int& jend )
+{
+   int ib=ew.m_iStartInt[g];
+   int ie=ew.m_iEndInt[g];
+   int jb=ew.m_jStartInt[g];
+   int je=ew.m_jEndInt[g];
+   if( (ib-1) % hs == 0 )
+      ibeg = (ib-1)/hs;
+   else
+      ibeg = (ib-1)/hs+1;
+   if( (jb-1) % hs == 0 )
+      jbeg = (jb-1)/hs;
+   else
+      jbeg = (jb-1)/hs+1;
+   iend = (ie-1)/hs;
+   jend = (je-1)/hs;
+}
+//-----------------------------------------------------------------------
 void SfileHDF5::get_patch_dims( sfile_breaks brk, int& ibeg, int& iend, int& jbeg, int& jend )
 {
    if( (brk.ib-1) % brk.hs == 0 )
@@ -575,18 +593,21 @@ void SfileHDF5::write_sfile_interfaces(hid_t file_id, hid_t mpiprop_id,
       int p = max(0, f-1);
       vector<sfile_breaks>& brks = patch_breaks[p];
       int hs,gk,g=brks[0].g;
+      int bsave=0;
       for (int b=0; b < brks.size(); ++b)
          if ((f > 0) && (brks[b].g >= g))
          {  // Select the top of patch p
             g = brks[b].g;
             gk = brks[b].kb; // index for top interface
             hs = brks[b].hs; // horizontal sampling for interface
+	    bsave = b;
          }
          else if ((f == 0) && (brks[b].g <= g))
          {  // bottom of domain, f=0
             g = brks[b].g;
             gk = brks[b].ke; // index for bottom interface
             hs = brks[b].hs; // horizontal sampling for interface
+	    bsave = b;
          }
 
       if (debug)
@@ -605,7 +626,8 @@ void SfileHDF5::write_sfile_interfaces(hid_t file_id, hid_t mpiprop_id,
       // This processor's horizontal window, interior points
 
       int ibeg, iend, jbeg, jend;
-      get_patch_dims( brks[0], ibeg, iend, jbeg, jend );
+      //      get_patch_dims( brks[bsave], ibeg, iend, jbeg, jend );
+      get_patch_dims_2(ew,g,hs,ibeg,iend,jbeg,jend);
 
       slice_dims[0] = iend-ibeg+1;
       slice_dims[1] = jend-jbeg+1;
@@ -614,10 +636,12 @@ void SfileHDF5::write_sfile_interfaces(hid_t file_id, hid_t mpiprop_id,
       // printf("myRank = %d, ew.m_iEndInt[ig]  = %d , ew.m_iStartInt[ig] = %d \n", myRank, ew.m_iEndInt[ig], ew.m_jStartInt[ig]);
       global_dims[0] = (ew.m_global_nx[g]-1)/hs + 1;
       global_dims[1] = (ew.m_global_ny[g]-1)/hs + 1;
+
       hsize_t start[3];
       start[0] = ibeg;
       start[1] = jbeg;
       start[2] = 0;
+
       // All ranks must have the same chunk size
       // slice_dims[0] = 10;
       // slice_dims[1] = 10;
@@ -811,7 +835,8 @@ void SfileHDF5::write_sfile_materials(hid_t file_id, hid_t mpiprop_id, EW& ew,
       int hs = brks[0].hs;
 
       int ibeg, iend, jbeg, jend;
-      get_patch_dims( brks[0], ibeg, iend, jbeg, jend );
+      //      get_patch_dims( brks[0], ibeg, iend, jbeg, jend );
+      get_patch_dims_2( ew, g, hs, ibeg, iend, jbeg, jend );
 
       slice_dims[0] = iend-ibeg+1;
       slice_dims[1] = jend-jbeg+1;
