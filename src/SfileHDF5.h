@@ -99,6 +99,11 @@ protected:
       sfile_breaks& brk, Sarray* z, float zmin, float gridh,
       vector<float>& var_min, vector<float>& var_max,
       Sarray& rho, Sarray& mu, Sarray& lambda, Sarray& qp, Sarray& qs);
+  static void material_interpolate_2(vector<float*>& h5_array,
+      float* zbot, float* ztop, hsize_t (&slice_dims)[3], 
+      sfile_breaks& brk, Sarray* z, float zmin, float gridh, int npatch,
+      int ngrids, vector<float>& var_min, vector<float>& var_max,
+      Sarray& rho, Sarray& mu, Sarray& lambda, Sarray& qp, Sarray& qs);
   static void patch_interface(float* z, hsize_t (&dims)[2], int npts,
       bool top, vector<sfile_breaks>& pbrk, EW& ew);
   static void read_sfile_header(hid_t file_id, hid_t mpiprop_id, 

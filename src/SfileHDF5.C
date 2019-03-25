@@ -905,8 +905,8 @@ void SfileHDF5::write_sfile_materials(hid_t file_id, hid_t mpiprop_id, EW& ew,
 	//	cout << myRank << "brks="<< b << " p="<< p << " g="<< g << endl;
         Sarray* z = (ew.m_topography_exists && (g==ngrids-1)) ? &(ew.mZ) : NULL;
         vector<float> tmp_min(nvars), tmp_max(nvars);
-        material_interpolate(h5_array, z_bot[p], z_top[p], 
-            slice_dims, brk, z, ew.m_zmin[g], ew.mGridSize[g], 
+        material_interpolate_2(h5_array, z_bot[p], z_top[p], 
+            slice_dims, brk, z, ew.m_zmin[g], ew.mGridSize[g], npatch, ngrids,
             tmp_min, tmp_max,
             ew.mRho[g], ew.mMu[g], ew.mLambda[g], ew.mQp[g], ew.mQs[g]);
         for (int v=0; v < nvars; ++v)
@@ -991,6 +991,7 @@ void SfileHDF5::material_interpolate(vector<float*>& h5_array,
     vector<float>& var_min, vector<float>& var_max,
     Sarray& grho, Sarray& gmu, Sarray& glambda, Sarray& gqp, Sarray& gqs)
 {
+  bool debug=false;
   const bool topo = (gridz != NULL);
   const float tol = gridh*1e-2; // relative
   const int nk = slice_dims[2];
@@ -1014,15 +1015,20 @@ void SfileHDF5::material_interpolate(vector<float*>& h5_array,
      omp_min[v] = 1e8;
      omp_max[v] = -1;
    }
+   if (debug)
+     cout << "Rank " << myRank << ", loop over [i,j]=[" << ibeg << ":" << iend 
+       << ", " << jbeg << ":" << jend << "]" << endl;
+
 #pragma omp parallel for reduction(max:omp_max) reduction(min:omp_min)
    for( int j=0 ; j < jend-jbeg+1 ;j++ )
       for( int i=0 ; i < iend-ibeg+1 ;i++ )
    //  for (int j=0; j < slice_dims[1]; ++j)
    //    for (int i=0; i < slice_dims[0]; ++i)
     {
-       //      bool false =  myRank==1 && (i==0) && (j==0);
-       //       bool debug= myRank ==1;
-       bool debug=false;
+      bool point_debug = (debug) && (brk.p==1) && (i==1) && ((j+jbeg)==17);
+       // bool point_debug = true;
+       //       bool point_debug= myRank ==1;
+       // bool point_debug=false;
        //      int gi = brk.ib + i*brk.hs;
        //      int gj = brk.jb + j*brk.hs;
        int gi = (i+ibeg)*brk.hs+1;
@@ -1031,14 +1037,14 @@ void SfileHDF5::material_interpolate(vector<float*>& h5_array,
       float zt = ztop[ijh5]; // smaller positive value of depth at top
       float zb = zbot[ijh5];
       float h = (zb - zt) / (float) (nk-1);
-      //      if (debug)
+      //      if (point_debug)
       //        cout << "grid=" << brk.g << ", zt=" << zt
       //          << ", zb=" << zb << ", h=" << h << endl;
 
       // Walk every point, identify if we can interpolate from grid
       for (int gk=brk.kb; gk < brk.ke; ++gk)
       {
-	 if( debug )
+	 if( point_debug )
 	    cout << "gk-loop start " << gk << " gi,gj= " << gi << " " << gj << endl;
         float gz0 = (topo) ? gridz->Sarray::operator()(gi,gj,gk) 
           : (zmin + (gk-1)*gridh);
@@ -1050,28 +1056,37 @@ void SfileHDF5::material_interpolate(vector<float*>& h5_array,
           kmax = floor((tol + gz1 - zt)/h);
         float zmin = zt + kmin*h;
         float zmax = zt + kmax*h;
-        if (zmin < (gz0-tol)) 
+        if (point_debug)
+          cout << "first pass, grid=" << brk.g << ", gk=" << gk 
+            << ", gz0=" << gz0 << ", gz1=" << gz1 
+            << ", kmin=" << kmin << ", kmax=" << kmax
+            << ", zmin=" << zmin << ", zmax=" << zmax 
+            << ", h=" << h << endl;
+        if (kmin > kmax) // Catch single points
+          kmin = kmax;
+        if ((zmin < (gz0-tol)) && (kmin != 0)) 
         {
-          zmin = zt + kmin*h;
           kmin++;
+          zmin = zt + kmin*h;
         }
         if (zmax > (gz1+tol))
         {
           kmax--;
           zmax = zt + kmax*h;
         }
-        if (debug)
-          cout << "grid=" << brk.g << ", gk=" << gk 
+        if (point_debug)
+          cout << "updated grid=" << brk.g << ", gk=" << gk 
             << ", gz0=" << gz0 << ", gz1=" << gz1 
             << ", kmin=" << kmin << ", kmax=" << kmax
-            << ", zmin=" << zmin << ", zmax=" << zmax << endl;
+            << ", zmin=" << zmin << ", zmax=" << zmax 
+            << ", h=" << h << endl;
         if ((kmin<0) || (kmax >= nk)) // out of range
           continue; 
         // Loop over valid k indexing
         for (int k=kmin; k <= kmax; ++k)
         {
           // Do the interpolation to this k point
-	   if( debug )
+	   if( point_debug )
 	   {
 	      cout << "i,j,k= " << i<<" " << j << " " << k << " (gi,gj,gk)=" << gi << " " << gj << " " << gk << endl;
 	      cout << "array bounds " << grho.m_ib << " " << grho.m_ie << " " << grho.m_jb <<
@@ -1088,6 +1103,8 @@ void SfileHDF5::material_interpolate(vector<float*>& h5_array,
           float cs = sqrt(mu/rho);
           h5_array[0][ijkh5]=rho; // rho, comp 0
           h5_array[1][ijkh5]=cp; // cp, comp 1
+          if( point_debug )
+              cout << "--> Cp[" << ijkh5 << "]=" << cp << endl;
           h5_array[2][ijkh5]=cs; // cs, comp 2
           omp_min[0] = min(omp_min[0], rho);
           omp_max[0] = max(omp_max[0], rho);
@@ -1124,6 +1141,161 @@ void SfileHDF5::material_interpolate(vector<float*>& h5_array,
       }
 #endif // #if 0
     }
+
+  // Copy over the min/max values
+  for (int v=0; v < nvars; ++v)
+  {
+    var_min[v] = omp_min[v];
+    var_max[v] = omp_max[v];
+  }
+}
+
+//-----------------------------------------------------------------------
+void SfileHDF5::material_interpolate_2(vector<float*>& h5_array,
+    float* zbot, float* ztop, hsize_t (&slice_dims)[3],
+    sfile_breaks& brk, Sarray* gridz, float zmin, float gridh, 
+    int npatch, int ngrids,
+    vector<float>& var_min, vector<float>& var_max,
+    Sarray& grho, Sarray& gmu, Sarray& glambda, Sarray& gqp, Sarray& gqs)
+{
+  bool debug=false;
+  const bool topo = (gridz != NULL);
+  const float tol = gridh*1e-2; // relative
+  const int nk = slice_dims[2];
+  const int nvars = h5_array.size();
+  // Loop over the grid, if we've stepped over a patch k point fill it in
+  int myRank;
+  MPI_Comm_rank(MPI_COMM_WORLD, &myRank);
+  int ibeg, iend, jbeg, jend, kbeg, kend;
+  get_patch_dims( brk, ibeg, iend, jbeg, jend );
+  kbeg = 0;
+  kend = nk-1;
+
+  float omp_min[nvars], omp_max[nvars];
+  for (int v=0; v < nvars; ++v)
+  {
+    omp_min[v] = 1e8;
+    omp_max[v] = -1;
+  }
+  if (debug)
+    cout << "Rank " << myRank << ", loop over [i,j,k]=[" << ibeg << ":" << iend 
+      << ", " << jbeg << ":" << jend
+      << ", " << kbeg << ":" << kend << "]" << endl;
+
+  #pragma omp parallel for reduction(max:omp_max) reduction(min:omp_min)
+  for( int j=0 ; j < jend-jbeg+1 ;j++ )
+  {
+    for( int i=0 ; i < iend-ibeg+1 ;i++ )
+    {
+      bool point_debug = (debug) && (brk.p==0) && (i==0) && (j==0);
+      // bool point_debug = true;
+      //       bool point_debug= myRank ==1;
+      // bool point_debug=false;
+      //      int gi = brk.ib + i*brk.hs;
+      //      int gj = brk.jb + j*brk.hs;
+      int gi = (i+ibeg)*brk.hs+1;
+      int gj = (j+jbeg)*brk.hs+1;
+      size_t ijh5 = j + slice_dims[1]*i;
+      float zt = ztop[ijh5]; // smaller positive value of depth at top
+      float zb = zbot[ijh5];
+      float h = (zb - zt) / (float) (nk-1);
+      //      if (point_debug)
+      //        cout << "grid=" << brk.g << ", zt=" << zt
+      //          << ", zb=" << zb << ", h=" << h << endl;
+
+      // Walk every point, identify if we can interpolate from grid
+      if( point_debug )
+        cout << "k-loop start " << gi << " " << gj
+          << ", grid=" << brk.g
+          << ", zt=" << zt << ", zb=" << zb
+          << ", h=" << h << endl;
+      for (int k=0, gk=brk.kb; k < nk; ++k) // Start gk at brk.kb
+      {
+        // Calculate the z value of point k
+        float zk = zt + k*h;
+        bool interp = false;
+        for (/* keep gk to speed up search */ ; gk < brk.ke; ++gk)
+        {
+          // Calculate the gz0 and gz1 for gk, gk+1
+          float gz0 = (topo) ? gridz->Sarray::operator()(gi,gj,gk) 
+            : (zmin + (gk-1)*gridh);
+          float gz1 = (topo) ? gridz->Sarray::operator()(gi,gj,gk+1) 
+            : (zmin + (gk)*gridh);
+          float t;
+          // if (in gz range + tol) 
+          if ((zk > (gz0-tol)) && (zk < (gz1+tol)))
+          { // interpolate, continue in k
+            t = (zt + k*h - gz0) / (gz1 - gz0);
+            interp = true;
+          }
+          // else if not in range, but at the top of domain
+          else if ((zk < (gz0-tol)) && (k == 0) && (brk.p == npatch-1)) 
+          { // check we should use value at gk=1, continue in k
+            // assert(gk==1 && (brk.g == ngrids-1));
+            t = 0; 
+            interp = true;
+          }
+          // else if not in range, but at the bottom of domain
+          else if ((zk > (gz1+tol)) && (k == (nk-1)) && (brk.p == 0))
+          { // check we should use value at gk=brk.ke, continue in k
+            // assert(gk==brk.ke-1 && (brk.g == 0));
+            t = 1; 
+            interp = true;
+          }
+
+          if (interp)
+          { // interp from gk values!
+            float rho = (1-t)*grho(gi,gj,gk)+t*grho(gi,gj,gk+1);
+            float mu = (1-t)*gmu(gi,gj,gk)+t*gmu(gi,gj,gk+1);
+            float lambda = (1-t)*glambda(gi,gj,gk)+t*glambda(gi,gj,gk+1);
+            float qp = (1-t)*gqp(gi,gj,gk)+t*gqp(gi,gj,gk+1);
+            float qs = (1-t)*gqs(gi,gj,gk)+t*gqs(gi,gj,gk+1);
+            size_t ijkh5 = k + slice_dims[2]*(j + slice_dims[1]*i);
+            float cp = sqrt((2*mu + lambda)/rho);
+            float cs = sqrt(mu/rho);
+            h5_array[0][ijkh5]=rho; // rho, comp 0
+            h5_array[1][ijkh5]=cp; // cp, comp 1
+            if( point_debug )
+              cout << "--> Cp[" << ijkh5 << "]=" << cp << endl;
+            h5_array[2][ijkh5]=cs; // cs, comp 2
+            omp_min[0] = min(omp_min[0], rho);
+            omp_max[0] = max(omp_max[0], rho);
+            omp_min[1] = min(omp_min[1], cp);
+            omp_max[1] = max(omp_max[1], cp);
+            omp_min[2] = min(omp_min[2], cs);
+            omp_max[2] = max(omp_max[2], cs);
+            if (nvars > 3)
+            {
+              h5_array[3][ijkh5]=qp; // qp, comp 3
+              h5_array[4][ijkh5]=qs; // qs, comp 4
+              omp_min[3] = min(omp_min[3], qp);
+              omp_max[3] = max(omp_max[3], qp);
+              omp_min[4] = min(omp_min[4], qs);
+              omp_max[4] = max(omp_max[4], qs);
+            }
+            if (point_debug)
+              cout << "interp from grid=" << brk.g 
+                << ", gk=" << gk << ", gz0=" << gz0 << ", gz1=" << gz1 
+                << ", patch=" << brk.p << ", k=" << k << ", zk=" << zk 
+                << ", t=" << t << ", h=" << h << endl;
+            break; // stop searching in gk
+          }
+          // else keep search gk
+        }
+        if (point_debug && !interp)
+        {
+          cout << "not found in grid=" << brk.g 
+            << ", gkb=" << brk.kb << ", gke=" << brk.ke << ", patch=" << brk.p
+            << ", k=" << k << ", zk=" << zk << ", h=" << h << endl;
+        }
+        if (interp)
+          continue; // continue to next k point, else hopefully another grid
+        else
+          gk = brk.kb; // reset gk search
+      } // k loop
+    } // j loop
+  } // i loop
+  // TODO: outside this routine, if any are invalid on any grid, abort
 
   // Copy over the min/max values
   for (int v=0; v < nvars; ++v)
