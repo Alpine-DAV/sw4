@@ -324,6 +324,10 @@ int MaterialRfile::io_processor( )
 //-----------------------------------------------------------------------
 void MaterialRfile::read_rfile( )
 {
+   // Timers
+   double time_start = MPI_Wtime();
+   // Open file
+
    string rname = "MaterialRfile::read_rfile";
 
   // Figure out bounding box in this processor
@@ -759,6 +763,12 @@ void MaterialRfile::read_rfile( )
    }
    else
       cout << "MaterialRfile::read_rfile, error could not open file " << fname << endl;
+
+   // Timers
+   double time_end = MPI_Wtime();
+   if (mEW->getRank() == 0)
+      cout << "MaterialRfile::read_rfile, time to read material file: " << time_end - time_start << " seconds." << endl;
+   cout.flush();
 }
 
 //-----------------------------------------------------------------------

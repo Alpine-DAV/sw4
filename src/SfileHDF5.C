@@ -367,7 +367,7 @@ void SfileHDF5::write_sfile(const std::string &file,
 void SfileHDF5::calculate_patches(EW& ew, vector<float_sw4>& mr_depth, 
     int hs, vector<vector<sfile_breaks> >& patch_breaks, vector<int>& patch_nk)
 {
-   const bool debug=false;
+   const bool debug=true;
    float_sw4 tol = 1e-5;
    int ngrids = ew.mNumberOfGrids;
    vector<sfile_breaks> brks;
@@ -461,11 +461,14 @@ void SfileHDF5::calculate_patches(EW& ew, vector<float_sw4>& mr_depth,
        if (b > 0) --nk; // Remove 1 point for overlap between grids
        patch_nk[p] = floor(nk);
        if (debug)
-           cout << "Patch " << pbrk[b].p << " above depth " 
-             << mr_depth[npatch-1-pbrk[b].p] << ", accum nk=" << patch_nk[p]
-             << ", k=" << k << ", in grid " << pbrk[b].g
-             << ", index range (" << pbrk[b].kb << ", " << pbrk[b].ke 
-             << "), hs = " << pbrk[b].hs << ", vs= " << pbrk[b].vs << endl;
+       {
+         cout << "Patch " << pbrk[b].p << " above depth " 
+           << mr_depth[npatch-1-pbrk[b].p] << ", accum nk=" << patch_nk[p]
+           << ", k=" << k << ", in grid " << pbrk[b].g
+           << ", index range (" << pbrk[b].kb << ", " << pbrk[b].ke 
+           << "), hs = " << pbrk[b].hs << ", vs= " << pbrk[b].vs << endl;
+         cout.flush();
+       }
        // ASSERT(gk >= pbrk[b].vs); // Not necessary with interpolation?
        ASSERT((gk+1) >= 2); // At least 2 points
      }
@@ -801,16 +804,9 @@ void SfileHDF5::write_sfile_materials(hid_t file_id, hid_t mpiprop_id, EW& ew,
    // Write the material data for each grid
    hid_t group_id = H5Gcreate(file_id, "Material_model", H5P_DEFAULT, 
        H5P_DEFAULT, H5P_DEFAULT);
-   float Var_min[npatch][nvars];
-   float Var_max[npatch][nvars];
    // Material output on each patch
    for (int p=0; p < npatch; p++)
    {
-      for (int v=0; v < nvars; ++v)
-      {
-        Var_min[p][v]=1e8;
-        Var_max[p][v]=0;
-      }
       // NB: these are stored in order of g high to g low
       vector<sfile_breaks>& brks = patch_breaks[p];
       int nk = patch_nk[p];
@@ -888,7 +884,12 @@ void SfileHDF5::write_sfile_materials(hid_t file_id, hid_t mpiprop_id, EW& ew,
       size_t npts = (size_t)(slice_dims[0]*slice_dims[1]*slice_dims[2]);
       vector<float*> h5_array(nvars);
       for (int v=0; v < nvars; ++v)
+      {
         h5_array[v] = new float[npts];
+#pragma omp parallel for
+        for (int ix=0; ix < npts; ++ix)
+          h5_array[v] = 0; // Initialize with invalid
+      }
 
       // int koffset = 0;
       // Do the interpolation
@@ -904,30 +905,38 @@ void SfileHDF5::write_sfile_materials(hid_t file_id, hid_t mpiprop_id, EW& ew,
         // Interopolate all variables
 	//	cout << myRank << "brks="<< b << " p="<< p << " g="<< g << endl;
         Sarray* z = (ew.m_topography_exists && (g==ngrids-1)) ? &(ew.mZ) : NULL;
-        vector<float> tmp_min(nvars), tmp_max(nvars);
         material_interpolate_2(h5_array, z_bot[p], z_top[p], 
             slice_dims, brk, z, ew.m_zmin[g], ew.mGridSize[g], npatch, ngrids,
-            tmp_min, tmp_max,
             ew.mRho[g], ew.mMu[g], ew.mLambda[g], ew.mQp[g], ew.mQs[g]);
-        for (int v=0; v < nvars; ++v)
-        {
-          Var_min[p][v] = tmp_min[v];
-          Var_max[p][v] = tmp_max[v];
-        }
         // Don't need this? koffset += (slice_dims[2]-1); // For overlap
 	//	cout << myRank << " Exit brks="<< b << " p="<< p << " g="<< g << endl;
       }
 
-      // TODO - calculate global Cs min/max with MPI
-
-      float Var_min_glb[npatch][nvars], Var_max_glb[npatch][nvars];
-      MPI_Reduce(Var_min, Var_min_glb, nvars*npatch, MPI_FLOAT, MPI_MIN, 0, MPI_COMM_WORLD );
-      MPI_Reduce(Var_max, Var_max_glb, nvars*npatch, MPI_FLOAT, MPI_MAX, 0, MPI_COMM_WORLD );
-      if (myRank == 0)
-        for (int v=0; v < nvars; ++v)
-          cout << "Material sfile patch " << p 
-            << " min " << field[v] << " =" << Var_min_glb[p][v]
-            << ", max " << field[v] << " =" << Var_max_glb[p][v] << endl;
+      // Calculate global min/max with MPI reduction
+      float var_min[npatch][nvars];
+      float var_max[npatch][nvars];
+      float omp_min[nvars], omp_max[nvars];
+      for (int v=0; v < nvars; ++v)
+      {
+        float omp_min = 1e8;
+        float omp_max = -1;
+#pragma omp parallel for reduction(max:omp_max) reduction(min:omp_min)
+        for (int ix=0; ix < npts; ++ix)
+        {
+            omp_min = min(omp_min, h5_array[v][ix]);
+            omp_max = max(omp_max, h5_array[v][ix]);
+        }
+        var_min[p][v] = omp_min;
+        var_max[p][v] = omp_max;
+      }
+      float var_min_glb[nvars], var_max_glb[nvars];
+      MPI_Reduce(var_min[p], var_min_glb, nvars, MPI_FLOAT, MPI_MIN, 0, MPI_COMM_WORLD );
+      MPI_Reduce(var_max[p], var_max_glb, nvars, MPI_FLOAT, MPI_MAX, 0, MPI_COMM_WORLD );
+      for (int v=0; v < nvars; ++v)
+      {
+        var_min[p][v] = var_min_glb[v];
+        var_max[p][v] = var_max_glb[v];
+      }
 
       // Do the hdf5 write in chunks
       // TODO - need to chunk!
@@ -936,6 +945,11 @@ void SfileHDF5::write_sfile_materials(hid_t file_id, hid_t mpiprop_id, EW& ew,
       // chunk_dims[2] = 10;
       for (int v=0; v < nvars; v++)
       {
+      if (myRank == 0)
+        cout << "Material sfile patch " << p 
+          << " min " << field[v] << " =" << var_min[p][v]
+          << ", max " << field[v] << " =" << var_max[p][v] << endl;
+
         hid_t dataset_id = H5Dopen2(grid_id, field[v], H5P_DEFAULT);
         hid_t dataspace_id = H5Dget_space(dataset_id);
         hid_t window_id = H5Screate_simple(dims, slice_dims, NULL);
@@ -1155,10 +1169,9 @@ void SfileHDF5::material_interpolate_2(vector<float*>& h5_array,
     float* zbot, float* ztop, hsize_t (&slice_dims)[3],
     sfile_breaks& brk, Sarray* gridz, float zmin, float gridh, 
     int npatch, int ngrids,
-    vector<float>& var_min, vector<float>& var_max,
     Sarray& grho, Sarray& gmu, Sarray& glambda, Sarray& gqp, Sarray& gqs)
 {
-  bool debug=false;
+  bool debug=true;
   const bool topo = (gridz != NULL);
   const float tol = gridh*1e-2; // relative
   const int nk = slice_dims[2];
@@ -1171,23 +1184,18 @@ void SfileHDF5::material_interpolate_2(vector<float*>& h5_array,
   kbeg = 0;
   kend = nk-1;
 
-  float omp_min[nvars], omp_max[nvars];
-  for (int v=0; v < nvars; ++v)
-  {
-    omp_min[v] = 1e8;
-    omp_max[v] = -1;
-  }
   if (debug)
     cout << "Rank " << myRank << ", loop over [i,j,k]=[" << ibeg << ":" << iend 
       << ", " << jbeg << ":" << jend
       << ", " << kbeg << ":" << kend << "]" << endl;
 
-  #pragma omp parallel for reduction(max:omp_max) reduction(min:omp_min)
+  #pragma omp parallel for
   for( int j=0 ; j < jend-jbeg+1 ;j++ )
   {
     for( int i=0 ; i < iend-ibeg+1 ;i++ )
     {
-      bool point_debug = (debug) && (brk.p==0) && (i==0) && (j==0);
+      bool point_debug = (debug) && (brk.p==1) && (i+ibeg)==0 && (j+jbeg)==31;
+      point_debug = (point_debug) || ((brk.p==2) && (i+ibeg)==0 && (j+jbeg)==70 && debug);
       // bool point_debug = true;
       //       bool point_debug= myRank ==1;
       // bool point_debug=false;
@@ -1202,6 +1210,13 @@ void SfileHDF5::material_interpolate_2(vector<float*>& h5_array,
       //      if (point_debug)
       //        cout << "grid=" << brk.g << ", zt=" << zt
       //          << ", zb=" << zb << ", h=" << h << endl;
+      // Calculate the gzt and gzb for values in this break
+      int gk=brk.kb;
+      float gzt = (topo) ? gridz->Sarray::operator()(gi,gj,gk) 
+        : (zmin + (gk-1)*gridh);
+      gk=brk.ke;
+      float gzb = (topo) ? gridz->Sarray::operator()(gi,gj,gk) 
+        : (zmin + (gk-1)*gridh);
 
       // Walk every point, identify if we can interpolate from grid
       if( point_debug )
@@ -1213,6 +1228,10 @@ void SfileHDF5::material_interpolate_2(vector<float*>& h5_array,
       {
         // Calculate the z value of point k
         float zk = zt + k*h;
+        bool above_top = ((zk <= (gzt-tol)) && (k < 3) && (brk.p == npatch-1) 
+              && (brk.g == ngrids-1) && (gk==1));
+        bool below_bot = ((zk >= (gzb+tol)) && (k > (nk-3)) && (brk.p == 0)
+              && (brk.g == 0));
         bool interp = false;
         for (/* keep gk to speed up search */ ; gk < brk.ke; ++gk)
         {
@@ -1229,16 +1248,14 @@ void SfileHDF5::material_interpolate_2(vector<float*>& h5_array,
             interp = true;
           }
           // else if not in range, but at the top of domain
-          else if ((zk < (gz0-tol)) && (k == 0) && (brk.p == npatch-1)) 
+          else if (above_top)
           { // check we should use value at gk=1, continue in k
-            // assert(gk==1 && (brk.g == ngrids-1));
             t = 0; 
             interp = true;
           }
           // else if not in range, but at the bottom of domain
-          else if ((zk > (gz1+tol)) && (k == (nk-1)) && (brk.p == 0))
+          else if (below_bot)
           { // check we should use value at gk=brk.ke, continue in k
-            // assert(gk==brk.ke-1 && (brk.g == 0));
             t = 1; 
             interp = true;
           }
@@ -1258,20 +1275,10 @@ void SfileHDF5::material_interpolate_2(vector<float*>& h5_array,
             if( point_debug )
               cout << "--> Cp[" << ijkh5 << "]=" << cp << endl;
             h5_array[2][ijkh5]=cs; // cs, comp 2
-            omp_min[0] = min(omp_min[0], rho);
-            omp_max[0] = max(omp_max[0], rho);
-            omp_min[1] = min(omp_min[1], cp);
-            omp_max[1] = max(omp_max[1], cp);
-            omp_min[2] = min(omp_min[2], cs);
-            omp_max[2] = max(omp_max[2], cs);
             if (nvars > 3)
             {
               h5_array[3][ijkh5]=qp; // qp, comp 3
               h5_array[4][ijkh5]=qs; // qs, comp 4
-              omp_min[3] = min(omp_min[3], qp);
-              omp_max[3] = max(omp_max[3], qp);
-              omp_min[4] = min(omp_min[4], qs);
-              omp_max[4] = max(omp_max[4], qs);
             }
             if (point_debug)
               cout << "interp from grid=" << brk.g 
@@ -1297,12 +1304,20 @@ void SfileHDF5::material_interpolate_2(vector<float*>& h5_array,
   } // i loop
   // TODO: outside this routine, if any are invalid on any grid, abort
 
-  // Copy over the min/max values
-  for (int v=0; v < nvars; ++v)
-  {
-    var_min[v] = omp_min[v];
-    var_max[v] = omp_max[v];
-  }
+#if 0
+  // For testing
+  for( int j=0 ; j < jend-jbeg+1 ;j++ )
+    for( int i=0 ; i < iend-ibeg+1 ;i++ )
+      for (int k=0; k < nk; ++k)
+      {
+        size_t ijkh5 = k + slice_dims[2]*(j + slice_dims[1]*i);
+        h5_array[0][ijkh5]=ijkh5+1;
+        h5_array[1][ijkh5]=ijkh5+1;
+        h5_array[2][ijkh5]=ijkh5+1;
+        h5_array[3][ijkh5]=ijkh5+1;
+        h5_array[4][ijkh5]=ijkh5+1;
+      }
+#endif // #if 0
 }
 
 //-----------------------------------------------------------------------

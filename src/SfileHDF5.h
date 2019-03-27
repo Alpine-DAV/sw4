@@ -102,7 +102,7 @@ protected:
   static void material_interpolate_2(vector<float*>& h5_array,
       float* zbot, float* ztop, hsize_t (&slice_dims)[3], 
       sfile_breaks& brk, Sarray* z, float zmin, float gridh, int npatch,
-      int ngrids, vector<float>& var_min, vector<float>& var_max,
+      int ngrids,
       Sarray& rho, Sarray& mu, Sarray& lambda, Sarray& qp, Sarray& qs);
   static void patch_interface(float* z, hsize_t (&dims)[2], int npts,
       bool top, vector<sfile_breaks>& pbrk, EW& ew);
