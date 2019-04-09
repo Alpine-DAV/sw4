@@ -995,6 +995,9 @@ void EW::solve( vector<Source*> & a_Sources, vector<TimeSeries*> & a_TimeSeries,
      // time_sum[0] += max_hdf5_time;
      // time_sum[7] += max_hdf5_time; // fold the essi output into images and time-series
    }
+#endif
+
+#if 0
 // Only do this if a MaterialSfile need to write the hdf5 material file
    ASSERT(m_mtrlblocks.size() > 0);
    MaterialSfile* sfile = NULL;

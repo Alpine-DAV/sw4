@@ -1,0 +1,24 @@
+# SW4 input file for testing the rfile command
+
+# set pfs=1 if you are on a parallel file system
+fileio path=. pfs=1 nwriters=4
+
+time steps=0
+
+# grid size is set in the grid command
+# DO NOT CHANGE AZ!
+grid x=12e3 y=12e3 z=6387.5 h=100 lat=37.93 lon=-122.25 az=143.6380001671 proj=tmerc datum=NAD83 lon_p=-123.0 lat_p=35.0 scale=0.9996
+
+refinement zmax=3187.5
+
+# curvilinear grid extends to z=63e and gets approximately the same gridsize as the finest Cartesian
+topography input=rfile zmax=887.5 order=3 file=berkeley.rfile
+
+# Small subset of version 8.3 of the USGS model in rfile format
+rfile filename=berkeley.rfile
+
+# threshold on vp and vs
+globalmaterial vsmin=500 vpmin=768
+
+# wave speeds are specified at 1.0 Hz, 3 viscoelastic mechanisms (the default)
+attenuation phasefreq=1.0 nmech=3 maxfreq=10

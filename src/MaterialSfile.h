@@ -66,7 +66,7 @@ class MaterialSfile : public MaterialData
   static void read_topo(const std::string &file, const std::string &path, 
       EW& ew, Sarray& gridElev, float_sw4& lon0, float_sw4& lat0, 
       float_sw4& azim, float_sw4& hh);
-  void write_sfile(MaterialRfile& rfile);
+  void write_sfile(const std::string& rfile_dir, const std::string& rfile_name);
   int horizontal_interval() {return m_horizontalInterval;}
   //  int get_material_pt( double x, double y, double z, double& rho, double& cs, double& cp,
   //		       double& qs, double& qp );
@@ -80,6 +80,8 @@ class MaterialSfile : public MaterialData
       && m_zminloc <= z && z <= m_zmaxloc;
   }
 
+   void read_rfile(MaterialRfile& rfile, 
+       const std::string &rfile_dir, const std::string &rfile_name);
    void read_sfile( );
    void fill_in_fluids( );
    int io_processor( );

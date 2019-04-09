@@ -59,7 +59,7 @@ MaterialSfile::MaterialSfile( EW* a_ew, const string a_file,
    m_read_hdf5(read_hdf5),
    m_write_hdf5(write_hdf5),
    m_horizontalInterval(horizontalInterval),
-   m_use_attenuation(a_ew->usingAttenuation())
+   m_use_attenuation(false)
 {
    mCoversAllPoints = false;
    // Check that the depths make sense
@@ -71,6 +71,8 @@ MaterialSfile::MaterialSfile( EW* a_ew, const string a_file,
      depth = vec_depths[d];
      m_vec_depths.push_back(vec_depths[d]);
    }
+   if (a_ew != NULL)
+     m_use_attenuation = a_ew->usingAttenuation();
    if (m_read_hdf5)
      read_sfile();
 }
@@ -344,13 +346,37 @@ void MaterialSfile::read_topo(const std::string &file,
 }
 
 //-----------------------------------------------------------------------
-void MaterialSfile::write_sfile(MaterialRfile& rfile)
+void MaterialSfile::write_sfile(const std::string &rfile_dir, 
+    const std::string &rfile_name)
 {
 #ifdef USE_HDF5
+   MaterialRfile rfile;
+   read_rfile(rfile, rfile_dir, rfile_name);
+   /*
    SfileHDF5::write_sfile(m_model_file, m_model_dir,
-       *mEW, rfile, m_vec_depths, m_horizontalInterval);
+      rfile, m_vec_depths, m_horizontalInterval);
+   */
+   SfileHDF5::write_sfile(m_model_file, m_model_dir,
+      rfile.m_use_attenuation, rfile.mMaterial,
+      rfile.m_ni, rfile.m_nj, rfile.m_nk,
+      rfile.m_z0, rfile.m_hh, rfile.m_hv,
+      rfile.m_lon0, rfile.m_lat0, rfile.m_azim,
+      m_vec_depths, m_horizontalInterval);
 #else
 	 cout << "WARNING: sw4 not compiled with hdf5=yes, " <<
     "--> ignoring MaterialSfile::write_sfile, no-op" << endl;
 #endif
 }
+
+//-----------------------------------------------------------------------
+void MaterialSfile::read_rfile(MaterialRfile& rfile, 
+    const std::string &rfile_dir, const std::string &rfile_name)
+{
+  string rname = "MaterialSfile::read_rfile";
+
+  // MaterialRfile is just a container for us to fill from rfile
+  rfile.m_model_dir = rfile_dir; 
+  rfile.m_model_file = rfile_name; 
+  rfile.read_whole_rfile();
+}
+

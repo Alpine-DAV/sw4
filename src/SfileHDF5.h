@@ -46,8 +46,11 @@ class SfileHDF5
 {
 public:
   static void write_sfile(const std::string& file, const std::string& path, 
-      EW& ew, MaterialRfile& model, vector<float_sw4>& depths, 
-      int horizontalInterval=1);
+      bool use_attenuation, vector<Sarray>& mMaterial,
+      vector<int>& ni, vector<int>& nj, vector<int>& nk,
+      vector<float_sw4>& z0, vector<float_sw4>& hh, vector<float_sw4>& hv,
+      double lon0, double lat0, double azim,
+      vector<float_sw4>& mr_depth, int horizontalInterval=1);
   static void read_sfile_topo(const std::string& file, EW& ew, Sarray& gridElev,
       float_sw4& lon0, float_sw4& lat0, float_sw4& azim, float_sw4& hh);
   static void read_sfile_material(const std::string& file, EW& ew, 
@@ -81,15 +84,17 @@ protected:
   };
 
   // Helper functions, just for internal use
-  static void calculate_patches(EW& ew, vector<float_sw4>& mr_depth, 
-      int horizontalSampling, vector<vector<sfile_breaks> >& breaks,
-      vector<int>& patch_nk);
+  static void calculate_patches(vector<Sarray>& material,
+    vector<float_sw4>& z0, vector<float_sw4>& hh, vector<float_sw4>& hv,
+    vector<int>& nk, vector<float_sw4>& mr_depth, int hs, 
+    vector<vector<sfile_breaks> >& patch_breaks, vector<int>& patch_nk);
 
 #ifdef USE_HDF5
   static void write_sfile_header(hid_t file_id, hid_t mpiprop_id,
       const float& h_coarse, const float (&lonlataz)[3], vector<int>& patch_nk);
   static void write_sfile_interfaces(hid_t file_id, hid_t mpiprop_id,
-      EW& ew, vector<vector<sfile_breaks> >& breaks, 
+      int nitop, int njtop, 
+      Sarray& z_topo, vector<int>& patch_nk, vector<float_sw4>& mr_depth,
       vector<float*>& z_bot, vector<float*>& z_top);
   static void write_sfile_materials(hid_t file_id, hid_t mpiprop_id, EW& ew,
       MaterialRfile& model, vector<vector<sfile_breaks> >& patch_breaks,
@@ -104,8 +109,9 @@ protected:
       sfile_breaks& brk, Sarray* z, float zmin, float gridh, int npatch,
       int ngrids,
       Sarray& rho, Sarray& mu, Sarray& lambda, Sarray& qp, Sarray& qs);
-  static void patch_interface(float* z, hsize_t (&dims)[2], int npts,
-      bool top, vector<sfile_breaks>& pbrk, EW& ew);
+  static void patch_interface(float* z, hsize_t (&dims)[2],
+    int f, vector<int>& patch_nk, vector<float_sw4>& mr_depth,
+    int hs, int cibeg, int cjbeg, Sarray& z_topo);
   static void read_sfile_header(hid_t file_id, hid_t mpiprop_id, 
       float& h, float (&lonlataz)[3], vector<int>& patch_nk);
   static void read_sfile_interface_group(hid_t file_id, hid_t mpiprop_id, 

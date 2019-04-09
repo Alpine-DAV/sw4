@@ -1,0 +1,80 @@
+Instructions to build
+
+cd sw4
+make debug=yes hdf5=yes proj=yes
+cd performance/rfile/hdf5/iotest
+make
+--> this will remove $(SW4_OBJECTS)/main.o so you will have to rebuild sw4
+
+mpirun -np 2 ./rfile_2_sfile.exe berkeley-rfile-2-sfile.in 
+
+Output should be a file berkeley.sfile
+
+h5dump -A berkeley.sfile
+
+HDF5 "berkeley.sfile" {
+GROUP "/" {
+   DATASET "Coarsest horizontal grid spacing" {
+      DATATYPE  H5T_IEEE_F32LE
+      DATASPACE  SIMPLE { ( 1 ) / ( 1 ) }
+   }
+   DATASET "Origin longitude, latitude, azimuth" {
+      DATATYPE  H5T_IEEE_F32LE
+      DATASPACE  SIMPLE { ( 3 ) / ( 3 ) }
+   }
+   GROUP "Z_interfaces" {
+      DATASET "z_values_0" {
+         DATATYPE  H5T_IEEE_F32LE
+         DATASPACE  SIMPLE { ( 31, 31 ) / ( 31, 31 ) }
+         ATTRIBUTE "interface_id" {
+            DATATYPE  H5T_STD_I32LE
+            DATASPACE  SCALAR
+            DATA {
+            (0): 0
+            }
+         }
+      }
+      DATASET "z_values_1" {
+         DATATYPE  H5T_IEEE_F32LE
+         DATASPACE  SIMPLE { ( 31, 31 ) / ( 31, 31 ) }
+         ATTRIBUTE "interface_id" {
+            DATATYPE  H5T_STD_I32LE
+            DATASPACE  SCALAR
+            DATA {
+            (0): 1
+            }
+         }
+      }
+      DATASET "z_values_2" {
+         DATATYPE  H5T_IEEE_F32LE
+         DATASPACE  SIMPLE { ( 61, 61 ) / ( 61, 61 ) }
+         ATTRIBUTE "interface_id" {
+            DATATYPE  H5T_STD_I32LE
+            DATASPACE  SCALAR
+            DATA {
+            (0): 2
+            }
+         }
+      }
+      DATASET "z_values_3" {
+         DATATYPE  H5T_IEEE_F32LE
+         DATASPACE  SIMPLE { ( 121, 121 ) / ( 121, 121 ) }
+         ATTRIBUTE "interface_id" {
+            DATATYPE  H5T_STD_I32LE
+            DATASPACE  SCALAR
+            DATA {
+            (0): 3
+            }
+         }
+      }
+   }
+   DATASET "grid nz" {
+      DATATYPE  H5T_STD_I32LE
+      DATASPACE  SIMPLE { ( 3 ) / ( 3 ) }
+   }
+   DATASET "ngrids" {
+      DATATYPE  H5T_STD_I32LE
+      DATASPACE  SIMPLE { ( 1 ) / ( 1 ) }
+   }
+}
+}

@@ -298,9 +298,9 @@ int MaterialRfile::io_processor( )
 {
    // Find out if this processor will participate in the I/O
    int iread=0, nproc, myid;
-   int nrwriters = mEW->getNumberOfWritersPFS();
    MPI_Comm_size(MPI_COMM_WORLD, &nproc);
    MPI_Comm_rank(MPI_COMM_WORLD, &myid);
+   int nrwriters = (mEW != NULL) ? mEW->getNumberOfWritersPFS() : nproc;
    if( nrwriters > nproc )
       nrwriters = nproc;
    int q, r;
@@ -912,4 +912,394 @@ void MaterialRfile::material_check( bool water )
 	 cout << "    rho   min and max " << cminstot[3] << " " << cmaxstot[3] << endl;
       }
    }
+}
+
+//-----------------------------------------------------------------------
+void MaterialRfile::read_whole_rfile( )
+{
+  // Don't assume we have any EW data for this routine
+  MPI_Comm comm = MPI_COMM_WORLD;
+  MPI_Info info = MPI_INFO_NULL;
+  int myRank;
+  MPI_Comm_rank(MPI_COMM_WORLD, &myRank);
+
+  // Timers
+  double time_start = MPI_Wtime();
+
+  int verbosity = 2;
+  string rname = "MaterialRfile::read_whole_rfile";
+  // Open file
+  // Read rfile header. Translate each patch into SW4 Cartesian coordinate system
+  string fname = m_model_dir + "/" + m_model_file;
+  m_bufsize = 200000;
+  int fd = open( fname.c_str(), O_RDONLY );
+  if( fd != -1 )
+  {
+    int magic;
+    size_t nr = read(fd,&magic,sizeof(int));
+    if( nr != sizeof(int) )
+    {
+      cout << rname << " Error reading magic number, nr= " << nr
+        << "bytes read" << endl;
+      close(fd);
+      return;
+    }
+
+    Byteswapper bswap;
+    int onesw=1;
+    bswap.byte_rev( &onesw, 1, "int" );
+    bool swapbytes;
+    if( magic == 1 )
+      swapbytes = false;
+    else if( magic == onesw )
+      swapbytes = true;
+    else
+    {
+      cout << rname << "error could not determine byte order on file "
+        << fname << " magic number is " << magic << endl;
+      close(fd);
+      return;
+    }
+
+    // ---------- precision
+    int prec = 0;
+    nr = read(fd,&prec,sizeof(int));
+    if( nr != sizeof(int) )
+    {
+      cout << rname << " Error reading prec, nr= " << nr
+        << "bytes read" << endl;
+      close(fd);
+      return;
+    }
+    if( swapbytes )
+      bswap.byte_rev( &prec, 1, "int" );
+    int flsize=4;
+    if( prec == 8 )
+      flsize = sizeof(double);
+    else if( prec == 4 )
+      flsize = sizeof(float);
+
+    // ---------- attenuation on file ?
+    int att;
+    nr = read(fd,&att,sizeof(int));
+    if( nr != sizeof(int) )
+    {
+      cout << rname << " Error reading att, nr= " << nr
+        << "bytes read" << endl;
+      close(fd);
+      return;
+    }
+    if( swapbytes )
+      bswap.byte_rev( &att, 1, "int" );
+    m_use_attenuation = (att==1);
+
+    // ---------- azimuth on file
+    double alpha;
+    nr = read(fd,&alpha,sizeof(double));
+    if( nr != sizeof(double) )
+    {
+      cout << rname << " Error reading alpha, nr= " << nr
+        << "bytes read" << endl;
+      close(fd);
+      return;
+    }
+    if( swapbytes )
+      bswap.byte_rev( &alpha, 1, "double" );
+    m_azim = alpha;
+
+    // ---------- origin on file
+    nr = read( fd, &m_lon0, sizeof(double));
+    if( nr != sizeof(double) )
+    {
+      cout << rname << " Error reading lon0, nr= " << nr
+        << "bytes read" << endl;
+      close(fd);
+      return;
+    }
+    if( swapbytes )
+      bswap.byte_rev( &m_lon0, 1, "double" );
+
+    nr = read( fd, &m_lat0, sizeof(double));
+    if( nr != sizeof(double) )
+    {
+      cout << rname << " Error reading lat0, nr= " << nr
+        << "bytes read" << endl;
+      close(fd);
+      return;
+    }
+    if( swapbytes )
+      bswap.byte_rev( &m_lat0, 1, "double" );
+    // mEW->computeCartesianCoord( m_x0, m_y0, lon0, lat0 );
+    m_x0 = 0;
+    m_y0 = 0;
+
+    // ---------- length of projection string
+    int len;
+    nr = read( fd, &len, sizeof(int));
+    if( nr != sizeof(int) )
+    {
+      cout << rname << " Error reading len, nr= " << nr
+        << "bytes read" << endl;
+      close(fd);
+      return;
+    }
+    if( swapbytes )
+      bswap.byte_rev( &len, 1, "int" );
+
+    // ---------- read projection string
+    char proj_str[len+1];
+    nr = read(fd, proj_str, len*sizeof(char));
+    proj_str[len]='\0';
+
+    // ---------- number of blocks on file
+    nr = read( fd, &m_npatches, sizeof(int) );
+    if( nr != sizeof(int) )
+    {
+      cout << rname << " Error reading npatches, nr= " << nr
+        << "bytes read" << endl;
+      close(fd);
+      return;
+    }
+    if( swapbytes )
+      bswap.byte_rev( &m_npatches, 1, "int" );
+
+    // test
+    if (myRank==0 && verbosity >= 2)
+    {
+      printf("Rfile header: magic=%i, prec=%i, att=%i\n", magic, prec, att);
+      printf("              azimuth=%e, lon0=%e, lat0=%e\n", m_azim, m_lon0, m_lat0);
+      printf("              pstring-len=%i, pstr='%s'\n", len, proj_str);
+      printf("              nblocks=%i\n", m_npatches);
+    }
+
+    m_hh.resize(m_npatches);
+    m_hv.resize(m_npatches);
+    m_z0.resize(m_npatches);
+    m_ni.resize(m_npatches);
+    m_nj.resize(m_npatches);
+    m_nk.resize(m_npatches);
+    // ---------- read block headers
+    vector<int> ncblock(m_npatches);
+    for( int p=0 ; p < m_npatches ; p++ )
+    {
+      // ---------- first part of block header
+      double hs[3];
+      nr = read( fd, hs, 3*sizeof(double) );
+      if( nr != 3*sizeof(double) )
+      {
+        cout << rname << " Error reading block spacings nr= " << nr
+          << "bytes read" << endl;
+        close(fd);
+        return;
+      }
+      if( swapbytes )
+        bswap.byte_rev( hs, 3, "double" );
+      m_hh[p] = static_cast<float_sw4>(hs[0]);
+      m_hv[p] = static_cast<float_sw4>(hs[1]);
+      m_z0[p] = static_cast<float_sw4>(hs[2]);
+
+      // ---------- second part of block header
+      int dim[4];
+      nr = read( fd, dim, 4*sizeof(int) );
+      if( nr != 4*sizeof(int) )
+      {
+        cout << rname << " Error reading block dimensions nr= " << nr
+          << "bytes read" << endl;
+        close(fd);
+        return;
+      }
+      if( swapbytes )
+        bswap.byte_rev( dim, 4, "int" );
+
+      ncblock[p] = dim[0];
+      m_ni[p]    = dim[1];
+      m_nj[p]    = dim[2];
+      m_nk[p]    = dim[3];
+      // test
+      if (myRank==0 && verbosity >= 2)
+      {
+        printf("  header block #%i\n", p);
+        printf("  hh=%e, hv=%e, z0=%e\n", m_hh[p], m_hv[p], m_z0[p]);
+        printf("  nc=%i, ni=%i, nj=%i, nk=%i\n", ncblock[p], m_ni[p], m_nj[p], m_nk[p]);
+      }
+    }
+
+    // Split up the readers in terms of number of ranks
+    int num_ranks, nirank, njrank = 0;
+    MPI_Comm_size(MPI_COMM_WORLD, &num_ranks);
+    for (njrank = (int) sqrt(num_ranks); njrank > 0; njrank--)
+      if (num_ranks % njrank == 0)
+        break; 
+    nirank = num_ranks / njrank;
+    // cout << rname << " reading into " << nIrank << " ranks in i, and " << nJrank << " in j." << endl;
+
+    // Intersect local indices with grid on rfile, assume all patches have the
+    // same x- and y- extent. Assume patch=0 is topography, patches =1,..npatches-1
+    // are ordered from top to bottom.
+    float_sw4 xminrf = m_x0,    xmaxrf = m_x0+(m_ni[0]-1)*m_hh[0];
+    float_sw4 yminrf = m_y0,    ymaxrf = m_y0+(m_nj[0]-1)*m_hh[0];
+    float_sw4 zminrf = m_z0[1], zmaxrf = m_z0[m_npatches-1] + (m_nk[m_npatches-1]-1)*m_hv[m_npatches-1];
+
+    mMaterial.resize(m_npatches);
+    m_ifirst.resize(m_npatches);
+    m_ilast.resize(m_npatches);
+    m_jfirst.resize(m_npatches);
+    m_jlast.resize(m_npatches);
+    m_kfirst.resize(m_npatches);
+    m_klast.resize(m_npatches);
+    size_t pos0 = 5*sizeof(int) + 3*sizeof(double)+ len*sizeof(char) +
+      m_npatches*(3*sizeof(double)+4*sizeof(int));
+    m_isempty.resize(m_npatches);
+
+    if( !m_outside )
+    {
+      // For each patch, figure out a box for this rank
+      for( int p=0 ; p < m_npatches ; p++ )
+      {
+        int imult = m_ni[p] / nirank;
+        int jmult = m_nj[p] / njrank;
+        m_ifirst[p] = (myRank % nirank)*imult + 1;
+        m_ilast[p]  = m_ifirst[p] + imult - 1;
+        if ((myRank % nirank) == (nirank-1))
+          m_ilast[p] += (m_ni[p] % nirank);
+        m_jfirst[p] = (myRank/nirank % njrank)*jmult + 1;
+        m_jlast[p]  = m_jfirst[p] + jmult - 1;
+        if ((myRank/nirank % njrank) == (njrank-1))
+          m_jlast[p] += (m_nj[p] % njrank);
+        m_kfirst[p] = 1;
+        m_klast[p]  = m_nk[p];
+
+        if( p == 0 )
+          m_kfirst[0] = m_klast[0] = 1; //topography
+
+        // Limit index ranges to global size limits
+        if( m_ifirst[p] < 1 )
+          m_ifirst[p] = 1;
+        if( m_ilast[p] > m_ni[p] )
+          m_ilast[p] = m_ni[p];
+        if( m_jfirst[p] < 1 )
+          m_jfirst[p] = 1;
+        if( m_jlast[p] > m_nj[p] )
+          m_jlast[p] = m_nj[p];
+        if( m_kfirst[p] < 1 )
+          m_kfirst[p] = 1;
+        if( m_klast[p] > m_nk[p] )
+          m_klast[p] = m_nk[p];
+
+        m_isempty[p] = false;
+        if( m_klast[p] < m_kfirst[p] )
+        {
+          m_isempty[p] = true;
+          m_ilast[p] = 0;
+          m_jlast[p] = 0;
+          m_klast[p] = 0;
+          m_ifirst[p] = 1;
+          m_jfirst[p] = 1;
+          m_kfirst[p] = 1;
+        }
+        if (verbosity >=2)
+        {
+          cout << "myRank = " << myRank 
+            << ", patch p=" << p 
+            << " i=" << m_ifirst[p] << ":" << m_ilast[p]
+            << " j=" << m_jfirst[p] << ":" << m_jlast[p]
+            << " k=" << m_kfirst[p] << ":" << m_klast[p] << endl
+            << "  nr components " << ncblock[p] << endl
+            << "  patch nr global size " << m_ni[p] << " x " << m_nj[p] << " x " << m_nk[p] << endl;
+          cout.flush();
+        }
+      }
+    }
+    else
+    {
+      for( int p=0 ; p < m_npatches ; p++ )
+      {
+        m_isempty[p] = true;
+        m_ilast[p] = 0;
+        m_jlast[p] = 0;
+        m_klast[p] = 0;
+        m_ifirst[p] = 1;
+        m_jfirst[p] = 1;
+        m_kfirst[p] = 1;
+      }
+    }
+
+    vector<int> isempty(m_npatches), isemptymin(m_npatches);
+    for( int p=0 ; p < m_npatches ; p++ )
+      isempty[p] = m_isempty[p];
+    MPI_Allreduce( &isempty[0], &isemptymin[0], m_npatches, MPI_INT, MPI_MIN, MPI_COMM_WORLD );
+    for( int p=0 ; p < m_npatches ; p++ )
+      m_isempty[p] = (isemptymin[p] == 1);
+
+    // Allocate memory
+    for( int p=0 ; p < m_npatches ; p++ )
+    {
+      try {
+        if( !m_isempty[p] )
+          mMaterial[p].define(ncblock[p],m_ifirst[p],m_ilast[p],m_jfirst[p],m_jlast[p],m_kfirst[p],m_klast[p]);
+      }
+      catch( bad_alloc& ba )
+      {
+        cout << "Processor " << myRank << " allocation of mMaterial failed." << endl;
+        cout << "p= "<< p << " ncblock= " << ncblock[p] << " ifirst,ilast " << m_ifirst[p] << " " << m_ilast[p] <<
+          " jfirst,jlast " << m_jfirst[p] << " " << m_jlast[p] <<
+          " kfirst,klast " << m_kfirst[p] << " " << m_klast[p] << 
+          " Exception= " << ba.what() << endl;
+        MPI_Abort(MPI_COMM_WORLD,0);
+
+      }
+    }
+
+    int iread = io_processor();
+    bool roworder = true;
+    for( int p=0 ; p < m_npatches ; p++ )
+    {
+      if( !m_isempty[p] )
+      {
+        int global[3]={ m_ni[p], m_nj[p], m_nk[p] };
+        int local[3] ={ m_ilast[p]-m_ifirst[p]+1, m_jlast[p]-m_jfirst[p]+1, m_klast[p]-m_kfirst[p]+1 };
+        int start[3] ={ m_ifirst[p]-1, m_jfirst[p]-1, m_kfirst[p]-1 };
+        if( roworder )
+        {
+          int tmp=global[0];
+          global[0]=global[2];
+          global[2]=tmp;
+          tmp=local[0];
+          local[0]=local[2];
+          local[2]=tmp;
+          tmp=start[0];
+          start[0]=start[2];
+          start[2]=tmp;
+        }
+        bool use_parallel = (num_ranks > 1);
+        Parallel_IO* pio = new Parallel_IO( iread, use_parallel, global, local, start, m_bufsize );
+        // Read corresponding part of patches
+        float_sw4* material_dble = new float_sw4[mMaterial[p].m_npts];
+        if( prec == 8 )
+          pio->read_array( &fd, ncblock[p], material_dble, pos0, "double", swapbytes );
+        //	       pio->read_array( &fd, ncblock[p], mMaterial[p].c_ptr(), pos0, "double", swapbytes );
+        else
+          pio->read_array( &fd, ncblock[p], material_dble, pos0, "float", swapbytes );
+        //	       pio->read_array( &fd, ncblock[p], mMaterial[p].c_ptr(), pos0, "float", swapbytes );
+        delete pio;
+        mMaterial[p].assign( material_dble, 0 );
+        delete[] material_dble;
+        if( roworder )
+          mMaterial[p].transposeik();
+      }
+      pos0 += ncblock[p]*m_ni[p]*static_cast<size_t>(m_nj[p])*m_nk[p]*flsize;
+    }
+    close(fd);
+
+    fill_in_fluids();
+    material_check(false);
+  }
+  else
+    cout << rname << ", error could not open file " << fname << endl;
+
+  // Timers
+  double time_end = MPI_Wtime();
+  if (myRank == 0)
+    cout << rname << ", time to read material file: " << time_end - time_start << " seconds." << endl;
+  cout.flush();
 }

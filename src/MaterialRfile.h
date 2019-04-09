@@ -38,18 +38,21 @@
 #include "sw4.h"
 
 class EW;
+class MaterialSfile;
 
 using namespace std;
 
 class MaterialRfile : public MaterialData
 {
+ friend class MaterialSfile;
+
  public:
    
    MaterialRfile( EW * a_ew,
 		  const std::string file,
 		  const std::string directory, int bufsize );
 
-  ~MaterialRfile();
+  ~MaterialRfile() {};
 
   void set_material_properties(std::vector<Sarray> & rho, 
 			       std::vector<Sarray> & cs,
@@ -64,13 +67,18 @@ class MaterialRfile : public MaterialData
   //  void getMinMaxBoundsZ(double& zmin, double& zmax);
    
  protected:
+
   inline bool inside( float_sw4 x, float_sw4 y, float_sw4 z )
   {
     return m_xminloc <= x && x <= m_xmaxloc && m_yminloc <= y && y <= m_ymaxloc 
       && m_zminloc <= z && z <= m_zmaxloc;
   }
 
+   // Protected default contructor
+   MaterialRfile() {};
+
    void read_rfile( );
+   void read_whole_rfile( );
    void fill_in_fluids( );
    int io_processor( );
    void material_check( bool water );
@@ -87,7 +95,7 @@ class MaterialRfile : public MaterialData
 
   // file coordinate system is x=(i-1)*m_hx[gr] + m_xmin[gr], in SW4 coordinates.
    vector<float_sw4> m_z0, m_hh, m_hv;
-   double m_x0, m_y0;
+   double m_x0, m_y0, m_lon0, m_lat0, m_azim;
 
    // xminloc, xmaxloc, etc. is the bounding box for the set of data patches in this processor.
    float_sw4 m_xminloc, m_xmaxloc, m_yminloc, m_ymaxloc, m_zminloc, m_zmaxloc;
