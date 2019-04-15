@@ -33,6 +33,7 @@
 
 #include "SfileHDF5.h"
 #include "MaterialSfile.h"
+#include <assert.h>
 
 #ifdef USE_HDF5
 #include "hdf5.h"
@@ -595,6 +596,77 @@ void SfileHDF5::get_patch_dims( sfile_breaks brk, int& ibeg, int& iend, int& jbe
 }
 
 //-----------------------------------------------------------------------
+void smooth_z_interface(float *data, int maxIter, int imin, 
+                                   int imax, int jmin, int jmax)
+{
+    float_sw4 rf=0.2; // rf<0.25 for stability
+    int iter;
+    int isize = imax - imin + 1, jsize = jmax - jmin + 1;
+    int size = isize * jsize;
+    float *tmp  = new float[size];
+
+    // Laplacian filter
+    for (iter=0; iter < maxIter; iter++)
+    {
+        #pragma omp parallel for
+        for (int i = imin+1; i <= imax-1; ++i) 
+        {
+            for (int j = jmin+1; j <= jmax-1; ++j)
+            {
+                tmp[i + j*isize] = data[i + j*isize] + rf*data[i+1 + j*isize ] + 
+                                   data[i-1 + j*isize] + data[i + (j+1)*isize] + 
+                                   data[i + (j-1)*isize] - 4.*data[i + j*isize];
+            }
+        }
+
+        // Neumann boundary conditions
+        #pragma omp parallel for
+        for (int j = jmin+1; j <= jmax-1; ++j)
+        {
+            int i = imin;
+            tmp[i + j*isize] = tmp[i+1 + j*isize];
+            i = imax;
+            tmp[i + j*isize] = tmp[i-1 + j*isize];
+        }
+
+        #pragma omp parallel for
+        for (int i = imin+1; i <= imax-1; ++i)
+        {
+            int j = jmin;
+            tmp[i + j*isize] = tmp[i + (j+1)*isize];
+            j = jmax;
+            tmp[i + j*isize] = tmp[i + (j-1)*isize];
+        }
+        // Corners
+        int i = imin;
+        int j = jmin;
+        tmp[i + j*isize] = tmp[i+1 + (j+1)*isize];
+
+        i = imax;
+        j = jmin;
+        tmp[i + j*isize] = tmp[i-1 + (j+1)*isize];
+
+        i = imin;
+        j = jmax;
+        tmp[i + j*isize] = tmp[i+1 + (j-1)*isize];
+
+        i = imax;
+        j = jmax;
+        tmp[i + j*isize] = tmp[i-1 + (j-1)*isize];
+
+        // TODO
+        /* communicate_array_2d_ext( tmp ); */
+
+        // update solution
+        /* #pragma omp parallel for */
+        /* for (int i = imin; i <= imax ; ++i) */
+        /*     for (int j = jmin; j <= jmax ; ++j) */
+        /*         data[i + j*isize] = tmp[i + j*isize]; */
+        memcpy(data, tmp, sizeof(float)*size);
+    }// end for iter
+}
+
+//-----------------------------------------------------------------------
 void SfileHDF5::write_sfile_interfaces(hid_t file_id, hid_t mpiprop_id, 
     int nitop, int njtop,
     Sarray& z_topo, vector<int>& patch_nk, vector<float_sw4>& mr_depth,
@@ -729,6 +801,11 @@ void SfileHDF5::write_sfile_interfaces(hid_t file_id, hid_t mpiprop_id,
       patch_interface(z_vals, slice_dims, f, 
           patch_nk, mr_depth, hs, cibeg, cjbeg, z_topo);
       // TODO - Tang, smooth the middle ones only (not f==npatch or ==0)
+      if (f != npatch && f != 0) 
+      {
+        int niter = 10;
+        smooth_z_interface(z_vals, niter, 0, 0, slice_dims[0], slice_dims[1]);
+      }
 
       // TODO - copy / interp them to z_bot's
       /*
@@ -1473,9 +1550,9 @@ void SfileHDF5::read_sfile_interface_group(hid_t file_id, hid_t mpiprop_id,
       // ierr = H5Pset_chunk(prop_id, z_dim, slice_dims);
 
       // TODO - read the topo data
-      hsize_t start[2] = {-1, -1};
+      hsize_t start[2] = {0, 0};
       start[0] = 0;
-      start[1] = 00;
+      start[1] = 0;
       if (debug)
       {
          sprintf(msg, "Rank %d, selecting interface %d z hyperslab = %d %d, size [%d,%d] in [%d,%d] \n",
