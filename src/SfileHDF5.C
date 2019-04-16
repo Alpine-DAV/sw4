@@ -596,8 +596,7 @@ void SfileHDF5::get_patch_dims( sfile_breaks brk, int& ibeg, int& iend, int& jbe
 }
 
 //-----------------------------------------------------------------------
-void smooth_z_interface(float *data, int maxIter, int imin, 
-                                   int imax, int jmin, int jmax)
+void smooth_z_interface(float *data, int maxIter, int imin, int imax, int jmin, int jmax)
 {
     float_sw4 rf=0.2; // rf<0.25 for stability
     int iter;
@@ -613,9 +612,9 @@ void smooth_z_interface(float *data, int maxIter, int imin,
         {
             for (int j = jmin+1; j <= jmax-1; ++j)
             {
-                tmp[i + j*isize] = data[i + j*isize] + rf*data[i+1 + j*isize ] + 
+                tmp[i + j*isize] = data[i + j*isize] + rf*(data[i+1 + j*isize ] + 
                                    data[i-1 + j*isize] + data[i + (j+1)*isize] + 
-                                   data[i + (j-1)*isize] - 4.*data[i + j*isize];
+                                   data[i + (j-1)*isize] - 4.*data[i + j*isize]);
             }
         }
 
@@ -654,14 +653,9 @@ void smooth_z_interface(float *data, int maxIter, int imin,
         j = jmax;
         tmp[i + j*isize] = tmp[i-1 + (j-1)*isize];
 
-        // TODO
         /* communicate_array_2d_ext( tmp ); */
 
         // update solution
-        /* #pragma omp parallel for */
-        /* for (int i = imin; i <= imax ; ++i) */
-        /*     for (int j = jmin; j <= jmax ; ++j) */
-        /*         data[i + j*isize] = tmp[i + j*isize]; */
         memcpy(data, tmp, sizeof(float)*size);
     }// end for iter
 }
@@ -804,7 +798,7 @@ void SfileHDF5::write_sfile_interfaces(hid_t file_id, hid_t mpiprop_id,
       if (f != npatch && f != 0) 
       {
         int niter = 10;
-        smooth_z_interface(z_vals, niter, 0, 0, slice_dims[0], slice_dims[1]);
+        smooth_z_interface(z_vals, niter, 0, slice_dims[0]-1, 0, slice_dims[1]-1);
       }
 
       // TODO - copy / interp them to z_bot's
