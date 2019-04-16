@@ -33,7 +33,7 @@
 
 #include "SfileHDF5.h"
 #include "MaterialSfile.h"
-#include <assert.h>
+#include "Require.h"
 
 #ifdef USE_HDF5
 #include "hdf5.h"
@@ -306,7 +306,7 @@ void SfileHDF5::write_sfile(const std::string &file,
     float_sw4 h = hv[1] * pow(2,d); 
     float dprev = (d == 0) ? 0 : mr_depth[d-1]; // top is depth 0
     int mk = floor((mr_depth[d] - dprev)/ h)+1;
-    assert(mk > 1); // at least 2 points
+    ASSERT(mk > 1); // at least 2 points
     if (d == npatch-1) // Make the bottom strictly Cartesian
       mr_depth[d-1] = mr_depth[d] - h*(float_sw4) (mk-1);
     patch_nk[npatch-1-d]=mk;
@@ -709,8 +709,8 @@ void SfileHDF5::write_sfile_interfaces(hid_t file_id, hid_t mpiprop_id,
    {
       int p = max(0, f-1);
       int hs = pow(2,npatch-p-1); // increase in grid spacing from top
-      assert(!((nitop-1) % hs)); // assume divisible by hs
-      assert(!((njtop-1) % hs));
+      ASSERT(!((nitop-1) % hs)); // assume divisible by hs
+      ASSERT(!((njtop-1) % hs));
       int cni = (nitop-1)/hs + 1;
       int cnj = (njtop-1)/hs + 1;
 
