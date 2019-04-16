@@ -1,5 +1,6 @@
 #include <mpi.h>
 #include "EW.h"
+#include "Require.h"
 
 // Simple driver to test hdf5 parallel
 int main(int argc, char** argv)
@@ -10,7 +11,7 @@ int main(int argc, char** argv)
   MPI_Comm_rank(MPI_COMM_WORLD, &myRank);
   MPI_Comm_size(MPI_COMM_WORLD, &nProcs);
 
-  assert(argc == 2);
+  ASSERT(argc == 2);
   // string filename = "berkeley-rfile-2-sfile.in";
   string filename(argv[1]);
 
@@ -21,7 +22,7 @@ int main(int argc, char** argv)
   string rfile_name = "berkeley.rfile";
   string rfile_dir = ".";
   int bufsize = 200000;
-  // MaterialRfile mat_rfile(&ew, rfile_name, rfile_dir, bufsize);
+  // MaterialRfile mat_rfile(ew, rfile_name, rfile_dir, bufsize);
 
   string sfile_name = "berkeley.sfile";
   vector<double> vec_depths;
