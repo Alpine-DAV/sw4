@@ -802,17 +802,6 @@ void SfileHDF5::write_sfile_interfaces(hid_t file_id, hid_t mpiprop_id,
       }
 
       // TODO - copy / interp them to z_bot's
-      /*
-      float tmp = 1e8;
-      for (int i=0; i < npts; i++) // Just to find memory issues?
-        tmp = min(z_vals[i],tmp);
-      iobj = H5Iis_valid(mpiprop_id);
-      if (iobj < 0)
-      {
-        cout << "Error from SfileHDF5 mpiprop corrupted before H5Dwrite " << endl;
-        MPI_Abort(comm,iobj);
-      }
-      */
       ierr = H5Dwrite(dataset_id, H5T_IEEE_F32LE, window_id, dataspace_id,
           mpiprop_id, z_vals);
       if (ierr < 0)
@@ -820,8 +809,6 @@ void SfileHDF5::write_sfile_interfaces(hid_t file_id, hid_t mpiprop_id,
         cout << "Error from SfileHDF5 topo H5Dwrite " << endl;
         MPI_Abort(comm,ierr);
       }
-#if 0
-#endif // #if 0
       ierr = H5Sclose(window_id);
       ierr = H5Dclose(dataset_id);
       ierr = H5Sclose(dataspace_id);
@@ -1371,15 +1358,15 @@ void SfileHDF5::patch_interface(float* z, hsize_t (&dims)[2],
     int f, vector<int>& patch_nk, vector<float_sw4>& mr_depth,
     int hs, int cibeg, int cjbeg, Sarray& z_topo)
 {
-  const bool debug=false;
+  const bool debug=true;
   MPI_Comm comm = MPI_COMM_WORLD;
   int myRank;
   MPI_Comm_rank(MPI_COMM_WORLD, &myRank);
   char msg[1000];
 
   int npatch = patch_nk.size();
-  bool use_cart = (f <= 1) && (f != npatch); // bottom 2 but not top
-
+  float_sw4 z_bot = mr_depth[npatch-1]; // should be the bottom
+ 
   // Copy subsample of the topo grid values/depth into window_array
   if (f==npatch) // top / topo
   {
@@ -1394,7 +1381,7 @@ void SfileHDF5::patch_interface(float* z, hsize_t (&dims)[2],
         z[ind]= z_topo(gi,gj,gk);
       }
   }
-  else if (use_cart) // part of bottom 2 cartesian interfaces
+  else if (f==0) // bottom cartesian interface
   {
 #pragma omp parallel for
     for( int j=0 ; j < dims[1]; j++ )
@@ -1404,10 +1391,10 @@ void SfileHDF5::patch_interface(float* z, hsize_t (&dims)[2],
         const int gi = (cibeg + i)*hs + 1;
         const int gj = (cjbeg + j)*hs + 1;
         const int gk = 1;
-        z[ind]= mr_depth[npatch-f-1];
+        z[ind]= z_bot;
       }
   }
-  else // topo + depth
+  else // else interp to depth between topo->bottom
   {
 #pragma omp parallel for
     for( int j=0 ; j < dims[1]; j++ )
@@ -1417,7 +1404,10 @@ void SfileHDF5::patch_interface(float* z, hsize_t (&dims)[2],
         const int gi = (cibeg + i)*hs + 1;
         const int gj = (cjbeg + j)*hs + 1;
         const int gk = 1;
-        z[ind]= mr_depth[npatch-f-1] + z_topo(gi,gj,gk);
+        const float topo = z_topo(gi,gj,gk); // topo here
+        const float totdep = z_bot - topo; // total depth
+        const float frac = mr_depth[npatch-1-f] / totdep; // frac of totdep
+        z[ind]= frac*z_bot + (1-frac)*topo;
       }
   }
 }
