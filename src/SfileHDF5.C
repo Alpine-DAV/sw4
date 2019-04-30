@@ -348,43 +348,41 @@ void SfileHDF5::write_sfile(const std::string &file,
   //   cout << "after interfaces write" << endl;
   ASSERT((z_bot.size() == npatch) && (z_top.size() == npatch));
 
-#if 0
-   write_sfile_materials(file_id, mpiprop_id, ew, model, patch_breaks, 
-       patch_nk, z_bot, z_top);
-   //   cout << "after materials write" << endl;
-   for (int i=0; i<z_bot.size(); ++i)
-   {
-     delete[] z_bot[i];
-     delete[] z_top[i];
-   }
-#endif // #if 0
+  write_sfile_materials2(file_id, mpiprop_id, material,
+      patch_nk, z_bot, z_top);
+  //   cout << "after materials write" << endl;
+  for (int i=0; i<z_bot.size(); ++i)
+  {
+    delete[] z_bot[i];
+    delete[] z_top[i];
+  }
 
-   // Close file
-   if (debug)
-   {
-     cout << "Rank " << myRank << " closing mpiprop..." << endl;
-     cout.flush();
-   }
-   H5Pclose(mpiprop_id);
-   if (debug)
-   {
-     cout << "Rank " << myRank << " closing file..." << endl;
-     cout.flush();
-   }
-   H5Fclose(file_id);
-   if (debug)
-   {
-     cout << "Rank " << myRank << " closed file..." << endl;
-     cout.flush();
-   }
+  // Close file
+  if (debug)
+  {
+    cout << "Rank " << myRank << " closing mpiprop..." << endl;
+    cout.flush();
+  }
+  H5Pclose(mpiprop_id);
+  if (debug)
+  {
+    cout << "Rank " << myRank << " closing file..." << endl;
+    cout.flush();
+  }
+  H5Fclose(file_id);
+  if (debug)
+  {
+    cout << "Rank " << myRank << " closed file..." << endl;
+    cout.flush();
+  }
 
-   // Timers
-   MPI_Barrier(MPI_COMM_WORLD);
-   double time_end = MPI_Wtime();
-   if (myRank == 0)
-      cout << "SfileHDF5::write_sfile, time to write material file: " 
-        << time_end - time_start << " seconds." << endl;
-   cout.flush();
+  // Timers
+  MPI_Barrier(MPI_COMM_WORLD);
+  double time_end = MPI_Wtime();
+  if (myRank == 0)
+    cout << "SfileHDF5::write_sfile, time to write material file: " 
+      << time_end - time_start << " seconds." << endl;
+  cout.flush();
 
 #endif // if USE_HDF5
 }
@@ -864,6 +862,7 @@ void SfileHDF5::write_sfile_interfaces(hid_t file_id, hid_t mpiprop_id,
   ierr = H5Gclose(group_id); // Z_interface group
 }
 
+
 //-----------------------------------------------------------------------
 void SfileHDF5::write_sfile_materials(hid_t file_id, hid_t mpiprop_id, EW& ew, 
     MaterialRfile &model, vector<vector<sfile_breaks> >& patch_breaks,
@@ -1077,6 +1076,224 @@ void SfileHDF5::write_sfile_materials(hid_t file_id, hid_t mpiprop_id, EW& ew,
    cout.flush();
    ierr = H5Gclose(group_id); // Material_model group
 }
+
+
+//-----------------------------------------------------------------------
+void SfileHDF5::write_sfile_materials2(hid_t file_id, hid_t mpiprop_id,
+    vector<Sarray>& material,
+    vector<int>& patch_nk, vector<float*>& z_bot, vector<float*>& z_top)
+{
+   const bool debug=false;
+   MPI_Comm comm = MPI_COMM_WORLD;
+   int myRank;
+   MPI_Comm_rank(MPI_COMM_WORLD, &myRank);
+
+   char msg[1000];
+   herr_t ierr;
+
+   int nvars = 5;
+   int npatch = patch_nk.size();
+
+   // Write the material data for each grid
+   hid_t group_id = H5Gcreate(file_id, "Material_model", H5P_DEFAULT, 
+       H5P_DEFAULT, H5P_DEFAULT);
+   // Material output on each patch
+   for (int p=0; p < npatch; p++)
+   {
+      // NB: these are stored in order of g high to g low
+      int nk = patch_nk[p];
+
+      // Write datasets from all the grids this patch intersects
+      hsize_t dims = 3;
+      hsize_t slice_dims[3], global_dims[3];
+      if (debug)
+      {
+         char msg[1000];
+         sprintf(msg, "Writing arrays for patch %d, rank %d\n", p, myRank);
+         cout << msg;
+         cout.flush();
+      }
+      // For each patch, add the material from sw4's grids
+      char buff[100];
+      sprintf(buff, "Material_model/grid_%d", p);
+      hid_t grid_id = H5Gcreate(file_id, buff, H5P_DEFAULT, 
+         H5P_DEFAULT, H5P_DEFAULT);
+      // add grid id attribute to the grid group
+      hid_t space_id = H5Screate(H5S_SCALAR);
+      hid_t attr_id = H5Acreate(grid_id, "grid_id", H5T_STD_I32LE, 
+          space_id, H5P_DEFAULT, H5P_DEFAULT);
+      H5Awrite(attr_id, H5T_STD_I32LE, &p);
+      ierr = H5Aclose(attr_id);
+      ierr = H5Sclose(space_id);
+
+#if 0
+      int g = brks[0].g; // Should be the first grid, thus the correct rez/pts
+      // This processor's horizontal window, interior points only
+      int hs = brks[0].hs;
+
+      int ibeg, iend, jbeg, jend;
+      //      get_patch_dims( brks[0], ibeg, iend, jbeg, jend );
+      get_patch_dims_2( ew, g, hs, ibeg, iend, jbeg, jend );
+
+      slice_dims[0] = iend-ibeg+1;
+      slice_dims[1] = jend-jbeg+1;
+
+      //      slice_dims[0] = ((ew.m_iEndInt[g]-1) - (ew.m_iStartInt[g]-1))/hs + 1;
+      //      slice_dims[1] = ((ew.m_jEndInt[g]-1) - (ew.m_jStartInt[g]-1))/hs + 1;
+
+      slice_dims[2] = nk;
+      hsize_t start[3];
+      //      start[0] = hsib;
+      //      start[1] = hsjb;
+      start[0] = ibeg;
+      start[1] = jbeg;
+      start[2] = 0; // write all z values
+
+      global_dims[0] = (ew.m_global_nx[g]-1)/hs + 1;
+      global_dims[1] = (ew.m_global_ny[g]-1)/hs + 1;
+
+      //      global_dims[0] = hsnx;
+      //      global_dims[1] = hsny;
+      global_dims[2] = nk;
+
+      const char *field[] = {"Rho", "Cp", "Cs", "Qp", "Qs"};
+      int nvars = (model.use_attenuation()) ? 5 : 3;
+
+      // Modify dataset creation properties to enable chunking
+      hid_t prop_id = H5Pcreate(H5P_DATASET_CREATE);
+      // herr_t ierr = H5Pset_chunk(prop_id, dims, slice_dims);
+      // Create the variables for this grid
+      for (int c=0; c < nvars; c++)
+      {
+        hid_t dataspace_id = H5Screate_simple(dims, global_dims, NULL);
+        hid_t dataset_id = H5Dcreate2(grid_id, field[c], H5T_IEEE_F32LE,
+          dataspace_id, H5P_DEFAULT, prop_id, H5P_DEFAULT);
+        ierr = H5Sclose(dataspace_id);
+        ierr = H5Dclose(dataset_id);
+      }
+
+      // Create temp arrays for this patch
+      size_t ncols = (size_t)(slice_dims[0] * slice_dims[1]);
+      size_t npts = (size_t)(slice_dims[0]*slice_dims[1]*slice_dims[2]);
+      vector<float*> h5_array(nvars);
+      for (int v=0; v < nvars; ++v)
+      {
+        h5_array[v] = new float[npts];
+#pragma omp parallel for
+        for (int ix=0; ix < npts; ++ix)
+          h5_array[v] = 0; // Initialize with invalid
+      }
+
+      // int koffset = 0;
+      // Do the interpolation
+      for (int b=0; b < brks.size(); b++)
+      {
+        sfile_breaks& brk = brks[b];
+        int g = brk.g;
+        // TODO - is this the right window?
+        brk.ib = ew.m_iStartInt[g];
+        brk.ie = ew.m_iEndInt[g];
+        brk.jb = ew.m_jStartInt[g];
+        brk.je = ew.m_jEndInt[g];
+        // Interopolate all variables
+	//	cout << myRank << "brks="<< b << " p="<< p << " g="<< g << endl;
+        Sarray* z = (ew.m_topography_exists && (g==ngrids-1)) ? &(ew.mZ) : NULL;
+        material_interpolate_2(h5_array, z_bot[p], z_top[p], 
+            slice_dims, brk, z, ew.m_zmin[g], ew.mGridSize[g], npatch, ngrids,
+            ew.mRho[g], ew.mMu[g], ew.mLambda[g], ew.mQp[g], ew.mQs[g]);
+        // Don't need this? koffset += (slice_dims[2]-1); // For overlap
+	//	cout << myRank << " Exit brks="<< b << " p="<< p << " g="<< g << endl;
+      }
+
+      // Calculate global min/max with MPI reduction
+      float var_min[npatch][nvars];
+      float var_max[npatch][nvars];
+      float omp_min[nvars], omp_max[nvars];
+      for (int v=0; v < nvars; ++v)
+      {
+        float omp_min = 1e8;
+        float omp_max = -1;
+#pragma omp parallel for reduction(max:omp_max) reduction(min:omp_min)
+        for (int ix=0; ix < npts; ++ix)
+        {
+            omp_min = min(omp_min, h5_array[v][ix]);
+            omp_max = max(omp_max, h5_array[v][ix]);
+        }
+        var_min[p][v] = omp_min;
+        var_max[p][v] = omp_max;
+      }
+      float var_min_glb[nvars], var_max_glb[nvars];
+      MPI_Reduce(var_min[p], var_min_glb, nvars, MPI_FLOAT, MPI_MIN, 0, MPI_COMM_WORLD );
+      MPI_Reduce(var_max[p], var_max_glb, nvars, MPI_FLOAT, MPI_MAX, 0, MPI_COMM_WORLD );
+      for (int v=0; v < nvars; ++v)
+      {
+        var_min[p][v] = var_min_glb[v];
+        var_max[p][v] = var_max_glb[v];
+      }
+
+      // Do the hdf5 write in chunks
+      // TODO - need to chunk!
+      // chunk_dims[0] = 10;
+      // chunk_dims[1] = 10;
+      // chunk_dims[2] = 10;
+      for (int v=0; v < nvars; v++)
+      {
+      if (myRank == 0)
+        cout << "Material sfile patch " << p 
+          << " min " << field[v] << " =" << var_min[p][v]
+          << ", max " << field[v] << " =" << var_max[p][v] << endl;
+
+        hid_t dataset_id = H5Dopen2(grid_id, field[v], H5P_DEFAULT);
+        hid_t dataspace_id = H5Dget_space(dataset_id);
+        hid_t window_id = H5Screate_simple(dims, slice_dims, NULL);
+        ierr = H5Sselect_hyperslab(dataspace_id, H5S_SELECT_SET, start, 
+            NULL, slice_dims, NULL);
+        if (debug)
+        {
+           sprintf(msg, "Rank %d selecting %s for hyperslab = [%d %d %d], size [%d,%d,%d] in [%d,%d,%d] \n",
+              myRank, field[v], (int) start[0], (int) start[1], (int) start[2],
+              (int) slice_dims[0], (int) slice_dims[1], (int) slice_dims[2],
+              (int) global_dims[0], (int) global_dims[1], (int) global_dims[2]);
+           cout << msg;
+           cout.flush();
+        }
+        // Write this variable
+        ierr = H5Dwrite(dataset_id, H5T_IEEE_F32LE, window_id, 
+             dataspace_id, mpiprop_id, h5_array[v]);
+        if (ierr < 0)
+        {
+          cout << "Error from SfileHDF5 component H5Dwrite " << endl;
+          MPI_Abort(comm,ierr);
+        }
+        ierr = H5Sclose(dataspace_id);
+        ierr = H5Dclose(dataset_id);
+        if (debug)
+        {
+          char msg[1000];
+          sprintf(msg, "Wrote %s array, patch %d, rank %d\n", 
+              field[v], p, myRank);
+          cout << msg;
+          cout.flush();
+        }
+      } // for v
+      ierr = H5Pclose(prop_id);
+#endif
+      ierr = H5Gclose(grid_id); // Material_model_grid_XX group
+
+      /*
+      for (int v=0; v < nvars; v++)
+      {
+        delete[] h5_array[v];
+        h5_array[v] = NULL;
+      }
+      */
+   }
+   if (debug)
+      cout << "Rank " << myRank << " closing group..." << endl;
+   cout.flush();
+   ierr = H5Gclose(group_id); // Material_model group
+}
+
 
 //-----------------------------------------------------------------------
 void SfileHDF5::material_interpolate(vector<float*>& h5_array,
