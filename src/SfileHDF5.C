@@ -660,48 +660,89 @@ void smooth_z_interface(float *data, int maxIter, int imin, int imax, int jmin, 
     }// end for iter
 }
 
+
+//-----------------------------------------------------------------------
+void SfileHDF5::interp_interface(float* z_top, float* z_bot, 
+    int fibeg, int fiend, int fjbeg, int fjend)
+{
+  // z_bot has dims (fibeg:fiend,fjbeg:fjend)
+  // assume hs=2 coarser for z_top (from p-1)
+  // set coarse points to be the same
+  // set in-between points to be avg of coarse ones
+  assert(((fiend-fibeg)%2)==0); // make sure we can coarsen by 2
+  int sizei = (fiend-fibeg)+1;
+  int sizeci = (fiend-fibeg)/2 +1;
+  int cibeg = fibeg/2;
+  int ciend = fiend/2;
+  int cjbeg = fjbeg/2;
+  int cjend = fjend/2;
+  for (int cj=cjbeg; cj <= cjend; ++cj)
+  for (int ci=cibeg; ci <= ciend; ++ci)
+  {
+    int cix = ci-cibeg+sizeci*(cj-cjbeg);
+    // corresponding fine grid index
+    int i=2*ci;
+    int j=2*cj;
+    int ix = i+sizei*j;
+
+    // Copy node values
+    z_bot[ix] = z_top[cix];
+
+    // Avg coarse points to the other 3 nearby fine points (1,0), (0,1), (1,1)
+    if (ci < ciend)
+      z_bot[ix+1] = .5*(z_top[cix] + z_top[cix+1]);
+    if (cj < cjend)
+      z_bot[ix+sizei] = .5*(z_top[cix] + z_top[cix+sizeci]);
+    if ((ci < ciend) && (cj < cjend))
+      z_bot[ix+1+sizei] = .25*(z_top[cix] + z_top[cix+1]
+          + z_top[cix+sizeci] + z_top[cix+1+sizeci]);
+  }
+}
+
+
 //-----------------------------------------------------------------------
 void SfileHDF5::write_sfile_interfaces(hid_t file_id, hid_t mpiprop_id, 
     int nitop, int njtop,
     Sarray& z_topo, vector<int>& patch_nk, vector<float_sw4>& mr_depth,
     vector<float*>& z_bot, vector<float*>& z_top)
 {
-   const bool debug=true;
-   MPI_Comm comm = MPI_COMM_WORLD;
-   int myRank;
-   MPI_Comm_rank(MPI_COMM_WORLD, &myRank);
+  const bool debug=true;
+  MPI_Comm comm = MPI_COMM_WORLD;
+  int myRank;
+  MPI_Comm_rank(MPI_COMM_WORLD, &myRank);
 
-   char msg[1000];
-   hsize_t dim = 1;
-   herr_t ierr;
-   hid_t dataspace_id;
-   hid_t dataset_id;
+  char msg[1000];
+  hsize_t dim = 1;
+  herr_t ierr;
+  hid_t dataspace_id;
+  hid_t dataset_id;
 
-   // Topo/interface section
-   //     Even for cartesian, store them all, including the bottom
-   //     For each grid, its lower interface is at the resolution of the lower grid (avoids interpolation, is a saw-tooth like interpolation)
+  // Topo/interface section
+  //     Even for cartesian, store them all, including the bottom
+  //     For each grid, its lower interface is at the resolution of the lower grid (avoids interpolation, is a saw-tooth like interpolation)
 
-   // Create the z_interface group
-   hid_t group_id;
-   char group_name[] = "Z_interfaces";
-   group_id = H5Gcreate(file_id, group_name, H5P_DEFAULT,
-                        H5P_DEFAULT, H5P_DEFAULT);
-   // Write 2D patches just for topo “interfaces” - elevation for top and any internal grid boundaries, as well as the bottom.
-   int npatch = patch_nk.size();
-   z_bot.resize(npatch, NULL);
-   z_top.resize(npatch, NULL);
-   if (debug)
-   {
-     sprintf(msg, "Rank %d, z_topo indices [%d:%d,%d:%d] in [1:%d,1:%d]\n", 
-         myRank, z_topo.m_ib, z_topo.m_ie, z_topo.m_jb, z_topo.m_je, 
-         nitop, njtop);
-     cout << msg;
-     cout.flush();
-   }
+  // Create the z_interface group
+  hid_t group_id;
+  char group_name[] = "Z_interfaces";
+  group_id = H5Gcreate(file_id, group_name, H5P_DEFAULT,
+      H5P_DEFAULT, H5P_DEFAULT);
+  // Write 2D patches just for topo “interfaces” - elevation for top and any internal grid boundaries, as well as the bottom.
+  int npatch = patch_nk.size();
+  z_bot.resize(npatch, NULL);
+  z_top.resize(npatch, NULL);
+  if (debug)
+  {
+    sprintf(msg, "Rank %d, z_topo indices [%d:%d,%d:%d] in [1:%d,1:%d]\n", 
+        myRank, z_topo.m_ib, z_topo.m_ie, z_topo.m_jb, z_topo.m_je, 
+        nitop, njtop);
+    cout << msg;
+    cout.flush();
+  }
 
-   for (int f = 0; f <= npatch; ++f) // f is interface index
-   {
-      int p = max(0, f-1);
+  for (int p = 0; p < npatch; ++p)
+  {
+    for (int b=0; b <= 1; ++b) // loop over bottom/top
+    {
       int hs = pow(2,npatch-p-1); // increase in grid spacing from top
       ASSERT(!((nitop-1) % hs)); // assume divisible by hs
       ASSERT(!((njtop-1) % hs));
@@ -713,11 +754,12 @@ void SfileHDF5::write_sfile_interfaces(hid_t file_id, hid_t mpiprop_id,
       int ciend = (z_topo.m_ie-1)/hs;
       int cjbeg = (z_topo.m_jb-1)/hs + (((z_topo.m_jb-1) % hs) ? 1 : 0);
       int cjend = (z_topo.m_je-1)/hs;
-
+      string if_name = (b==0) ? "z_bot" : "z_top";
       if (debug)
       {
-        sprintf(msg, "Rank %d, interface %d, topo indices [%d:%d,%d:%d] in [0:%d,0:%d]\n", 
-            myRank, f, cibeg, ciend, cjbeg, cjend, cni-1, cnj-1);
+        sprintf(msg, "Rank %d, patch %d %s, topo indices [%d:%d,%d:%d] in [0:%d,0:%d]\n", 
+            myRank, p, if_name.c_str(), 
+            cibeg, ciend, cjbeg, cjend, cni-1, cnj-1);
         cout << msg;
         cout.flush();
       }
@@ -739,42 +781,42 @@ void SfileHDF5::write_sfile_interfaces(hid_t file_id, hid_t mpiprop_id,
 
       // Allocate our tmp arrays on first pass
       size_t npts = (size_t)(slice_dims[0] * slice_dims[1]);
-      if (z_bot[p] == NULL)
+      if (b==0) // allocate both on first pass
       {
         z_bot[p] = new float[npts];
         z_top[p] = new float[npts];
       }
-      // TODO - sample/interpolate/smooth/copy z_topo to this interface
 
       hid_t prop_id = H5Pcreate(H5P_DATASET_CREATE);
       // Create dataset for z field
       hid_t dataspace_id = H5Screate_simple(z_dims, global_dims, NULL);
       char buff[100];
-      sprintf(buff, "z_values_%d", f);
+      sprintf(buff, "%s_%d", if_name.c_str(), p);
       dataset_id = H5Dcreate2(group_id, buff, H5T_IEEE_F32LE,
-                              dataspace_id, H5P_DEFAULT, prop_id, H5P_DEFAULT);
+          dataspace_id, H5P_DEFAULT, prop_id, H5P_DEFAULT);
       if (dataset_id < 0)
       {
-         cout << "SfileHDF5::write_sfile_interfaces: "
-           << "Could not create dataset!" << endl;
-         MPI_Abort(comm, file_id);
+        cout << "SfileHDF5::write_sfile_interfaces: "
+          << "Could not create dataset" << buff << "!" << endl;
+        MPI_Abort(comm, file_id);
       }
       hid_t space_id = H5Screate(H5S_SCALAR);
-      hid_t attr_id = H5Acreate(dataset_id, "interface_id", H5T_STD_I32LE,
-                                space_id, H5P_DEFAULT, H5P_DEFAULT);
-      H5Awrite(attr_id, H5T_STD_I32LE, &f);
+      sprintf(buff, "%s_id", if_name.c_str());
+      hid_t attr_id = H5Acreate(dataset_id, buff, H5T_STD_I32LE,
+          space_id, H5P_DEFAULT, H5P_DEFAULT);
+      H5Awrite(attr_id, H5T_STD_I32LE, &p);
       ierr = H5Aclose(attr_id);
       ierr = H5Sclose(space_id);
 
       // Write the data, if topo, or generate for cart
       if (debug)
       {
-         sprintf(msg, "Rank %d, selecting patch %d z hyperslab = [%d %d], size [%d,%d] in [0:%d,0:%d] \n",
-                 myRank, p, (int)start[0], (int)start[1],
-                 (int)slice_dims[0], (int)slice_dims[1],
-                 (int)global_dims[0]-1, (int)global_dims[1]-1);
-         cout << msg;
-         cout.flush();
+        sprintf(msg, "Rank %d, selecting patch %d %s hyperslab = [%d %d], size [%d,%d] in [0:%d,0:%d] \n",
+            myRank, p, if_name.c_str(), (int)start[0], (int)start[1],
+            (int)slice_dims[0], (int)slice_dims[1],
+            (int)global_dims[0]-1, (int)global_dims[1]-1);
+        cout << msg;
+        cout.flush();
       }
       hid_t window_id = H5Screate_simple(z_dims, slice_dims, NULL);
       ierr = H5Sselect_hyperslab(dataspace_id, H5S_SELECT_SET, start, NULL,
@@ -791,17 +833,21 @@ void SfileHDF5::write_sfile_interfaces(hid_t file_id, hid_t mpiprop_id,
         cout << msg;
         cout.flush();
       }
-      float* z_vals = (f!=0) ? z_top[p] : z_bot[p];
-      patch_interface(z_vals, slice_dims, f, 
-          patch_nk, mr_depth, hs, cibeg, cjbeg, z_topo);
-      // TODO - Tang, smooth the middle ones only (not f==npatch or ==0)
-      if (f != npatch && f != 0) 
+      bool topbot = (p==0 && b==0) || (p==npatch-1 && b==1);
+      if (topbot || !(b==0)) // not an interior z_bot
+        patch_interface(z_bot, z_top, slice_dims, p, b,
+            patch_nk, mr_depth, hs, cibeg, cjbeg, z_topo);
+      else // interior z_bot, interp from z_top[p-1]
+        interp_interface(z_top[p-1], z_bot[p], cibeg, ciend, cjbeg, cjend);
+
+      // Smooth the middle z_top's only
+      float* z_vals = (b==0) ? z_bot[p] : z_top[p];
+      if (!topbot && !(b==0))
       {
         int niter = 10;
         smooth_z_interface(z_vals, niter, 0, slice_dims[0]-1, 0, slice_dims[1]-1);
       }
 
-      // TODO - copy / interp them to z_bot's
       ierr = H5Dwrite(dataset_id, H5T_IEEE_F32LE, window_id, dataspace_id,
           mpiprop_id, z_vals);
       if (ierr < 0)
@@ -813,8 +859,9 @@ void SfileHDF5::write_sfile_interfaces(hid_t file_id, hid_t mpiprop_id,
       ierr = H5Dclose(dataset_id);
       ierr = H5Sclose(dataspace_id);
       ierr = H5Pclose(prop_id);
-   }
-   ierr = H5Gclose(group_id); // Z_interface group
+    }
+  }
+  ierr = H5Gclose(group_id); // Z_interface group
 }
 
 //-----------------------------------------------------------------------
@@ -1353,10 +1400,11 @@ void SfileHDF5::material_interpolate_2(vector<float*>& h5_array,
 #endif // #if 0
 }
 
+
 //-----------------------------------------------------------------------
-void SfileHDF5::patch_interface(float* z, hsize_t (&dims)[2],
-    int f, vector<int>& patch_nk, vector<float_sw4>& mr_depth,
-    int hs, int cibeg, int cjbeg, Sarray& z_topo)
+void SfileHDF5::patch_interface(vector<float*> z_bot, vector<float*> z_top, 
+    hsize_t (&dims)[2], int p, int b, vector<int>& patch_nk, 
+    vector<float_sw4>& mr_depth, int hs, int cibeg, int cjbeg, Sarray& z_topo)
 {
   const bool debug=true;
   MPI_Comm comm = MPI_COMM_WORLD;
@@ -1365,10 +1413,13 @@ void SfileHDF5::patch_interface(float* z, hsize_t (&dims)[2],
   char msg[1000];
 
   int npatch = patch_nk.size();
-  float_sw4 z_bot = mr_depth[npatch-1]; // should be the bottom
+  float_sw4 z_bottom = mr_depth[npatch-1]; // should be the bottom
+  float* z = (b==0) ? z_bot[p] : z_top[p];
  
+  // What mr_depth do we use?
+  int d = npatch - 1 - (p + b);
   // Copy subsample of the topo grid values/depth into window_array
-  if (f==npatch) // top / topo
+  if (p==npatch-1 && b==1) // top / topo
   {
 #pragma omp parallel for
     for( int j=0 ; j < dims[1]; j++ )
@@ -1381,7 +1432,7 @@ void SfileHDF5::patch_interface(float* z, hsize_t (&dims)[2],
         z[ind]= z_topo(gi,gj,gk);
       }
   }
-  else if (f==0) // bottom cartesian interface
+  else if (p==0 && b==0) // bottom cartesian interface
   {
 #pragma omp parallel for
     for( int j=0 ; j < dims[1]; j++ )
@@ -1391,7 +1442,7 @@ void SfileHDF5::patch_interface(float* z, hsize_t (&dims)[2],
         const int gi = (cibeg + i)*hs + 1;
         const int gj = (cjbeg + j)*hs + 1;
         const int gk = 1;
-        z[ind]= z_bot;
+        z[ind]= z_bottom;
       }
   }
   else // else interp to depth between topo->bottom
@@ -1405,9 +1456,9 @@ void SfileHDF5::patch_interface(float* z, hsize_t (&dims)[2],
         const int gj = (cjbeg + j)*hs + 1;
         const int gk = 1;
         const float topo = z_topo(gi,gj,gk); // topo here
-        const float totdep = z_bot - topo; // total depth
-        const float frac = mr_depth[npatch-1-f] / totdep; // frac of totdep
-        z[ind]= frac*z_bot + (1-frac)*topo;
+        const float totdep = z_bottom - topo; // total depth
+        const float frac = mr_depth[npatch-1-p-b] / totdep; // frac of totdep
+        z[ind]= frac*z_bottom + (1-frac)*topo;
       }
   }
 }

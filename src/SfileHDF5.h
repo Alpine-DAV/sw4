@@ -109,9 +109,10 @@ protected:
       sfile_breaks& brk, Sarray* z, float zmin, float gridh, int npatch,
       int ngrids,
       Sarray& rho, Sarray& mu, Sarray& lambda, Sarray& qp, Sarray& qs);
-  static void patch_interface(float* z, hsize_t (&dims)[2],
-    int f, vector<int>& patch_nk, vector<float_sw4>& mr_depth,
-    int hs, int cibeg, int cjbeg, Sarray& z_topo);
+  static void patch_interface(vector<float*> z_bot, vector<float*> z_top,
+      hsize_t (&dims)[2], int p, int b, vector<int>& patch_nk, 
+      vector<float_sw4>& mr_depth, int hs, int cibeg, int cjbeg, 
+      Sarray& z_topo);
   static void read_sfile_header(hid_t file_id, hid_t mpiprop_id, 
       float& h, float (&lonlataz)[3], vector<int>& patch_nk);
   static void read_sfile_interface_group(hid_t file_id, hid_t mpiprop_id, 
@@ -119,6 +120,8 @@ protected:
   static void read_sfile_material_group(hid_t file_id, hid_t mpiprop_id, 
       int nghost, int nvars, vector<Sarray>& matl);
   static void calculate_grid_boundingbox(EW& ew, float_sw4 (&bb)[3][2]);
+  static void interp_interface(float* z_top, float* z_bot, 
+    int cibeg, int ciend, int cjbeg, int cjend);
   static void calculate_interpolation_patch(vector<Sarray>& matl, 
       int nghost, float_sw4 (&bb)[3][2], float_sw4 x0, float_sw4 m_y0, 
       float hh, int nvars, vector<int>& patch_nk);
