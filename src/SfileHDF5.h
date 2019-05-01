@@ -100,7 +100,8 @@ protected:
       MaterialRfile& model, vector<vector<sfile_breaks> >& patch_breaks,
       vector<int>& patch_nk, vector<float*>& z_bot, vector<float*>& z_top);
   static void write_sfile_materials2(hid_t file_id, hid_t mpiprop_id,
-      vector<Sarray>& material,
+      vector<Sarray>& material, vector<float_sw4>& z0, vector<float_sw4>& hv,
+      vector<int>& ni, vector<int>& nj, vector<int>& nk, 
       vector<int>& patch_nk, vector<float*>& z_bot, vector<float*>& z_top);
   static void material_interpolate(vector<float*>& h5_array,
       float* zbot, float* ztop, hsize_t (&slice_dims)[3], 

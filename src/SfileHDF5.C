@@ -348,7 +348,7 @@ void SfileHDF5::write_sfile(const std::string &file,
   //   cout << "after interfaces write" << endl;
   ASSERT((z_bot.size() == npatch) && (z_top.size() == npatch));
 
-  write_sfile_materials2(file_id, mpiprop_id, material,
+  write_sfile_materials2(file_id, mpiprop_id, material, z0, hv, ni, nj, nk,
       patch_nk, z_bot, z_top);
   //   cout << "after materials write" << endl;
   for (int i=0; i<z_bot.size(); ++i)
@@ -1080,7 +1080,8 @@ void SfileHDF5::write_sfile_materials(hid_t file_id, hid_t mpiprop_id, EW& ew,
 
 //-----------------------------------------------------------------------
 void SfileHDF5::write_sfile_materials2(hid_t file_id, hid_t mpiprop_id,
-    vector<Sarray>& material,
+    vector<Sarray>& material, vector<float_sw4>& z0, vector<float_sw4>& hh,
+    vector<int>& ni, vector<int>& nj, vector<int>& nk,
     vector<int>& patch_nk, vector<float*>& z_bot, vector<float*>& z_top)
 {
    const bool debug=false;
@@ -1091,6 +1092,7 @@ void SfileHDF5::write_sfile_materials2(hid_t file_id, hid_t mpiprop_id,
    char msg[1000];
    herr_t ierr;
 
+   int nrpatch = material.size()-1; // 0 index is just topo, ignore
    int nvars = 5;
    int npatch = patch_nk.size();
 
@@ -1131,33 +1133,34 @@ void SfileHDF5::write_sfile_materials2(hid_t file_id, hid_t mpiprop_id,
       // This processor's horizontal window, interior points only
       int hs = brks[0].hs;
 
-      int ibeg, iend, jbeg, jend;
       //      get_patch_dims( brks[0], ibeg, iend, jbeg, jend );
       get_patch_dims_2( ew, g, hs, ibeg, iend, jbeg, jend );
-
+#endif
+      /*
+      int ibeg = (z_topo.m_ib-1)/hs + (((z_topo.m_ib-1) % hs) ? 1 : 0);
+      int iend = (z_topo.m_ie-1)/hs;
+      int jbeg = (z_topo.m_jb-1)/hs + (((z_topo.m_jb-1) % hs) ? 1 : 0);
+      int jend = (z_topo.m_je-1)/hs;
       slice_dims[0] = iend-ibeg+1;
       slice_dims[1] = jend-jbeg+1;
-
-      //      slice_dims[0] = ((ew.m_iEndInt[g]-1) - (ew.m_iStartInt[g]-1))/hs + 1;
-      //      slice_dims[1] = ((ew.m_jEndInt[g]-1) - (ew.m_jStartInt[g]-1))/hs + 1;
-
       slice_dims[2] = nk;
+      */
+
       hsize_t start[3];
-      //      start[0] = hsib;
-      //      start[1] = hsjb;
-      start[0] = ibeg;
-      start[1] = jbeg;
+      start[0] = 0;
+      start[1] = 0;
       start[2] = 0; // write all z values
 
-      global_dims[0] = (ew.m_global_nx[g]-1)/hs + 1;
-      global_dims[1] = (ew.m_global_ny[g]-1)/hs + 1;
+      slice_dims[0] = ni[p+1];
+      slice_dims[1] = nj[p+1];
+      slice_dims[2] = nk;
 
-      //      global_dims[0] = hsnx;
-      //      global_dims[1] = hsny;
+      global_dims[0] = ni[p+1];
+      global_dims[1] = nj[p+1];
       global_dims[2] = nk;
 
       const char *field[] = {"Rho", "Cp", "Cs", "Qp", "Qs"};
-      int nvars = (model.use_attenuation()) ? 5 : 3;
+      int nvars = 5; // use attenuation variables
 
       // Modify dataset creation properties to enable chunking
       hid_t prop_id = H5Pcreate(H5P_DATASET_CREATE);
@@ -1184,6 +1187,7 @@ void SfileHDF5::write_sfile_materials2(hid_t file_id, hid_t mpiprop_id,
           h5_array[v] = 0; // Initialize with invalid
       }
 
+#if 0
       // int koffset = 0;
       // Do the interpolation
       for (int b=0; b < brks.size(); b++)
@@ -1204,7 +1208,6 @@ void SfileHDF5::write_sfile_materials2(hid_t file_id, hid_t mpiprop_id,
         // Don't need this? koffset += (slice_dims[2]-1); // For overlap
 	//	cout << myRank << " Exit brks="<< b << " p="<< p << " g="<< g << endl;
       }
-
       // Calculate global min/max with MPI reduction
       float var_min[npatch][nvars];
       float var_max[npatch][nvars];
@@ -1230,6 +1233,7 @@ void SfileHDF5::write_sfile_materials2(hid_t file_id, hid_t mpiprop_id,
         var_min[p][v] = var_min_glb[v];
         var_max[p][v] = var_max_glb[v];
       }
+#endif
 
       // Do the hdf5 write in chunks
       // TODO - need to chunk!
@@ -1238,10 +1242,12 @@ void SfileHDF5::write_sfile_materials2(hid_t file_id, hid_t mpiprop_id,
       // chunk_dims[2] = 10;
       for (int v=0; v < nvars; v++)
       {
-      if (myRank == 0)
-        cout << "Material sfile patch " << p 
-          << " min " << field[v] << " =" << var_min[p][v]
-          << ", max " << field[v] << " =" << var_max[p][v] << endl;
+        /*
+        if (myRank == 0)
+          cout << "Material sfile patch " << p 
+            << " min " << field[v] << " =" << var_min[p][v]
+            << ", max " << field[v] << " =" << var_max[p][v] << endl;
+        */
 
         hid_t dataset_id = H5Dopen2(grid_id, field[v], H5P_DEFAULT);
         hid_t dataspace_id = H5Dget_space(dataset_id);
@@ -1258,6 +1264,7 @@ void SfileHDF5::write_sfile_materials2(hid_t file_id, hid_t mpiprop_id,
            cout.flush();
         }
         // Write this variable
+        /*
         ierr = H5Dwrite(dataset_id, H5T_IEEE_F32LE, window_id, 
              dataspace_id, mpiprop_id, h5_array[v]);
         if (ierr < 0)
@@ -1265,6 +1272,7 @@ void SfileHDF5::write_sfile_materials2(hid_t file_id, hid_t mpiprop_id,
           cout << "Error from SfileHDF5 component H5Dwrite " << endl;
           MPI_Abort(comm,ierr);
         }
+        */
         ierr = H5Sclose(dataspace_id);
         ierr = H5Dclose(dataset_id);
         if (debug)
@@ -1277,7 +1285,6 @@ void SfileHDF5::write_sfile_materials2(hid_t file_id, hid_t mpiprop_id,
         }
       } // for v
       ierr = H5Pclose(prop_id);
-#endif
       ierr = H5Gclose(grid_id); // Material_model_grid_XX group
 
       /*
