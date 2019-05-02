@@ -307,8 +307,10 @@ void SfileHDF5::write_sfile(const std::string &file,
     float dprev = (d == 0) ? 0 : mr_depth[d-1]; // top is depth 0
     int mk = floor((mr_depth[d] - dprev)/ h)+1;
     ASSERT(mk > 1); // at least 2 points
+    /*
     if (d == npatch-1) // Make the bottom strictly Cartesian
       mr_depth[d-1] = mr_depth[d] - h*(float_sw4) (mk-1);
+    */
     patch_nk[npatch-1-d]=mk;
   }
   for (int p=0; p < npatch; ++p)
@@ -348,7 +350,7 @@ void SfileHDF5::write_sfile(const std::string &file,
   //   cout << "after interfaces write" << endl;
   ASSERT((z_bot.size() == npatch) && (z_top.size() == npatch));
 
-  write_sfile_materials2(file_id, mpiprop_id, material, z0, hv, ni, nj, nk,
+  write_sfile_materials2(file_id, mpiprop_id, material, z0, hv,
       patch_nk, z_bot, z_top);
   //   cout << "after materials write" << endl;
   for (int i=0; i<z_bot.size(); ++i)
@@ -1080,8 +1082,7 @@ void SfileHDF5::write_sfile_materials(hid_t file_id, hid_t mpiprop_id, EW& ew,
 
 //-----------------------------------------------------------------------
 void SfileHDF5::write_sfile_materials2(hid_t file_id, hid_t mpiprop_id,
-    vector<Sarray>& material, vector<float_sw4>& z0, vector<float_sw4>& hh,
-    vector<int>& ni, vector<int>& nj, vector<int>& nk,
+    vector<Sarray>& material, vector<float_sw4>& z0, vector<float_sw4>& hv,
     vector<int>& patch_nk, vector<float*>& z_bot, vector<float*>& z_top)
 {
    const bool debug=false;
@@ -1146,17 +1147,20 @@ void SfileHDF5::write_sfile_materials2(hid_t file_id, hid_t mpiprop_id,
       slice_dims[2] = nk;
       */
 
+      int ni,nj;
+      ni = material[p+1].m_ni;
+      nj = material[p+1].m_nj;
       hsize_t start[3];
       start[0] = 0;
       start[1] = 0;
       start[2] = 0; // write all z values
 
-      slice_dims[0] = ni[p+1];
-      slice_dims[1] = nj[p+1];
+      slice_dims[0] = ni;
+      slice_dims[1] = nj;
       slice_dims[2] = nk;
 
-      global_dims[0] = ni[p+1];
-      global_dims[1] = nj[p+1];
+      global_dims[0] = ni;
+      global_dims[1] = nj;
       global_dims[2] = nk;
 
       const char *field[] = {"Rho", "Cp", "Cs", "Qp", "Qs"};
