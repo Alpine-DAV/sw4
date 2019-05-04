@@ -1148,8 +1148,8 @@ void SfileHDF5::write_sfile_materials2(hid_t file_id, hid_t mpiprop_id,
       */
 
       int ni,nj;
-      ni = material[p+1].m_ni;
-      nj = material[p+1].m_nj;
+      ni = material[npatch-1-p+1].m_ni;
+      nj = material[npatch-1-p+1].m_nj;
       hsize_t start[3];
       start[0] = 0;
       start[1] = 0;
