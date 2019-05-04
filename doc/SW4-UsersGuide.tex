@@ -1740,7 +1740,7 @@ sfile mode=read filename=USGSBayAreaVM-08.3.0.rfile directory=/Users/petersson1
 The file contents are similar to the \verb+rfile+ file, and includes
   different $hh$ and $hv$, internal (curvilinear) refinement boundaries,
   and all 5 material properties.
-See \ref{keyword:rfile} for more information.
+See \ref{keyword:sfile} for more information.
 %
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -5163,51 +5163,27 @@ GROUP "/" {
          DATATYPE  H5T_IEEE_F32LE
          DATASPACE  SIMPLE { ( 31, 31 ) / ( 31, 31 ) }
       }
-      DATASET "z_bot_1" {
-        ...
-      }
-      DATASET "z_bot_2" {
-        ...
-      }
+      DATASET "z_bot_1" { ...  }
+      DATASET "z_bot_2" { ...  }
       DATASET "z_top_0" {
          DATATYPE  H5T_IEEE_F32LE
          DATASPACE  SIMPLE { ( 31, 31 ) / ( 31, 31 ) }
       }
-      DATASET "z_top_1" {
-        ...
-      }
-      DATASET "z_top_2" {
-        ...
-      }
+      DATASET "z_top_1" { ...  }
+      DATASET "z_top_2" { ...  }
    }
    GROUP "Material_model" {
-      GROUP "grid_0" {
-        ...
-      }
-      GROUP "grid_1" {
-        ...
-      }
+      GROUP "grid_0" { ...  }
+      GROUP "grid_1" { ...  }
       GROUP "grid_2" {
          DATASET "Rho" {
             DATATYPE  H5T_IEEE_F32LE
             DATASPACE  SIMPLE { ( 121, 121, 44 ) / ( 121, 121, 44 ) }
          }
-         DATASET "Cp" {
-            DATATYPE  H5T_IEEE_F32LE
-            DATASPACE  SIMPLE { ( 121, 121, 44 ) / ( 121, 121, 44 ) }
-         }
-         DATASET "Cs" {
-            DATATYPE  H5T_IEEE_F32LE
-            DATASPACE  SIMPLE { ( 121, 121, 44 ) / ( 121, 121, 44 ) }
-         }
-         DATASET "Qp" {
-            DATATYPE  H5T_IEEE_F32LE
-            DATASPACE  SIMPLE { ( 121, 121, 44 ) / ( 121, 121, 44 ) }
-         }
-         DATASET "Qs" {
-            DATATYPE  H5T_IEEE_F32LE
-            DATASPACE  SIMPLE { ( 121, 121, 44 ) / ( 121, 121, 44 ) }
-         }
+         DATASET "Cp" { ...  }
+         DATASET "Cs" { ...  }
+         DATASET "Qp" { ...  }
+         DATASET "Qs" { ...  }
       }
    }
 }
