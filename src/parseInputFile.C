@@ -369,7 +369,8 @@ bool EW::parseInputFile( vector<vector<Source*> > & a_GlobalUniqueSources,
      else if( m_topoInputStyle == EW::Rfile )
         extractTopographyFromRfile( m_topoFileName );
      else if( m_topoInputStyle == EW::Sfile )
-	      extractTopographyFromSfile( m_topoFileName );
+	      extractTopographyFromSfile2( m_topoFileName );
+	      /* extractTopographyFromSfile( m_topoFileName ); */
 
 
 // preprocess the mTopo array
@@ -8217,7 +8218,8 @@ void EW::processMaterialSfile(char* buffer)
    if (m_myRank == 0)
       cout << "*** Using Sfile " << filename << " in directory " << directory << endl;
 
-   MaterialSfile* sf = new MaterialSfile( this, filename, directory, read_hdf5,       write_hdf5, horizontalInterval, vec_depths);
+   MaterialSfile* sf = new MaterialSfile( this, filename, directory, horizontalInterval, vec_depths);
+   /* MaterialSfile* sf = new MaterialSfile( this, filename, directory, read_hdf5,       write_hdf5, horizontalInterval, vec_depths); */
    add_mtrl_block( sf  );
 }
 

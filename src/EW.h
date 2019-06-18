@@ -404,6 +404,7 @@ void extractTopographyFromEfile(string a_topoFileName, string a_topoExtFileName,
                                 float_sw4 a_EFileResolution);
 void extractTopographyFromRfile( std::string a_topoFileName );
 void extractTopographyFromSfile( std::string a_topoFileName );
+void extractTopographyFromSfile2( std::string a_topoFileName );
 
 void smoothTopography(int maxIter);
 

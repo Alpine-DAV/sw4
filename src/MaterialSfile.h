@@ -50,8 +50,8 @@ class MaterialSfile : public MaterialData
    MaterialSfile( EW * a_ew,
 		  const std::string file,
 		  const std::string directory, 
-      bool read_hdf5, bool write_hdf5,
-      int horizontalInterval, vector<double> vec_depths);
+                  /* bool read_hdf5, bool write_hdf5, */
+                  int horizontalInterval, vector<double> vec_depths);
 
   ~MaterialSfile();
 
@@ -62,11 +62,11 @@ class MaterialSfile : public MaterialData
 			       std::vector<Sarray> & xip);
 
   bool use_attenuation() {return m_use_attenuation;}
-  bool check_write_hdf5() {return m_write_hdf5;}
-  static void read_topo(const std::string &file, const std::string &path, 
-      EW& ew, Sarray& gridElev, float_sw4& lon0, float_sw4& lat0, 
-      float_sw4& azim, float_sw4& hh);
-  void write_sfile(const std::string& rfile_dir, const std::string& rfile_name);
+  /* bool check_write_hdf5() {return m_write_hdf5;} */
+  /* static void read_topo(const std::string &file, const std::string &path, */ 
+  /*     EW& ew, Sarray& gridElev, float_sw4& lon0, float_sw4& lat0, */ 
+  /*     float_sw4& azim, float_sw4& hh); */
+  /* void write_sfile(const std::string& rfile_dir, const std::string& rfile_name); */
   int horizontal_interval() {return m_horizontalInterval;}
   //  int get_material_pt( double x, double y, double z, double& rho, double& cs, double& cp,
   //		       double& qs, double& qp );
@@ -80,11 +80,12 @@ class MaterialSfile : public MaterialData
       && m_zminloc <= z && z <= m_zmaxloc;
   }
 
-   void read_rfile(MaterialRfile& rfile, 
-       const std::string &rfile_dir, const std::string &rfile_name);
-   void read_sfile( );
+   /* void read_rfile(MaterialRfile& rfile, */ 
+   /*     const std::string &rfile_dir, const std::string &rfile_name); */
+   /* void read_sfile( ); */
+   void read_sfile2( );
    void fill_in_fluids( );
-   int io_processor( );
+   /* int io_processor( ); */
    void material_check( bool water );
    
    EW* mEW;
@@ -92,8 +93,8 @@ class MaterialSfile : public MaterialData
    std::string m_model_file, m_model_dir;
 
    bool m_use_attenuation;
-   bool m_read_hdf5;
-   bool m_write_hdf5;
+   /* bool m_read_hdf5; */
+   /* bool m_write_hdf5; */
    int m_horizontalInterval;
 
    int m_npatches;
@@ -101,16 +102,21 @@ class MaterialSfile : public MaterialData
    vector<int> m_ifirst, m_ilast, m_jfirst, m_jlast, m_kfirst, m_klast, m_ni, m_nj, m_nk;
 
   // file coordinate system is x=(i-1)*m_hx[gr] + m_xmin[gr], in SW4 coordinates.
-   // vector<float_sw4> m_z0, m_hh, m_hv;
-   vector<float_sw4> m_hh;
-   double m_x0, m_y0;
+   vector<float_sw4> m_z0, m_hh, m_hv;
+   double m_x0, m_y0, m_lon0, m_lat0, m_azim;
 
    // xminloc, xmaxloc, etc. is the bounding box for the set of data patches in this processor.
    float_sw4 m_xminloc, m_xmaxloc, m_yminloc, m_ymaxloc, m_zminloc, m_zmaxloc;
    bool m_outside;
 
 // 3-dimensional Sarrays
-   vector<Sarray> mMaterial;
+   /* vector<Sarray> mMaterial; */
+   vector<Sarray> mMaterial_rho;
+   vector<Sarray> mMaterial_cp;
+   vector<Sarray> mMaterial_cs;
+   vector<Sarray> mMaterial_qp;
+   vector<Sarray> mMaterial_qs;
+
    vector<Sarray> mInterface;
    vector<bool> m_isempty;
    vector<double> m_vec_depths;
