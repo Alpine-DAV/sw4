@@ -388,7 +388,6 @@ using std::cout;
 
 /* #endif // if USE_HDF5 */
 /* } */
-
 #if 0
 //-----------------------------------------------------------------------
 void SfileHDF5::calculate_patches(vector<Sarray>& material,
@@ -1415,7 +1414,7 @@ void SfileHDF5::interp_interface(float* z_top, float* z_bot,
 /*   int npatch = patch_nk.size(); */
 /*   float_sw4 z_bottom = mr_depth[npatch-1]; // should be the bottom */
 /*   float* z = (b==0) ? z_bot[p] : z_top[p]; */
- 
+
 /*   // What mr_depth do we use? */
 /*   int d = npatch - 1 - (p + b); */
 /*   // Copy subsample of the topo grid values/depth into window_array */
