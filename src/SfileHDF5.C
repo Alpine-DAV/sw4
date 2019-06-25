@@ -561,142 +561,142 @@ void SfileHDF5::calculate_patches(vector<Sarray>& material,
 /*   ierr = H5Sclose(dataspace_id); */
 /* } */
 
-//-----------------------------------------------------------------------
-void SfileHDF5::get_patch_dims_2( EW& ew, int g, int hs, int& ibeg, int& iend, int& jbeg, int& jend )
-{
-   int ib=ew.m_iStartInt[g];
-   int ie=ew.m_iEndInt[g];
-   int jb=ew.m_jStartInt[g];
-   int je=ew.m_jEndInt[g];
-   if( (ib-1) % hs == 0 )
-      ibeg = (ib-1)/hs;
-   else
-      ibeg = (ib-1)/hs+1;
-   if( (jb-1) % hs == 0 )
-      jbeg = (jb-1)/hs;
-   else
-      jbeg = (jb-1)/hs+1;
-   iend = (ie-1)/hs;
-   jend = (je-1)/hs;
-}
-//-----------------------------------------------------------------------
-void SfileHDF5::get_patch_dims( sfile_breaks brk, int& ibeg, int& iend, int& jbeg, int& jend )
-{
-   if( (brk.ib-1) % brk.hs == 0 )
-      ibeg = (brk.ib-1)/brk.hs;
-   else
-      ibeg = (brk.ib-1)/brk.hs+1;
-   if( (brk.jb-1) % brk.hs == 0 )
-      jbeg = (brk.jb-1)/brk.hs;
-   else
-      jbeg = (brk.jb-1)/brk.hs+1;
-   iend = (brk.ie-1)/brk.hs;
-   jend = (brk.je-1)/brk.hs;
-}
+/* //----------------------------------------------------------------------- */
+/* void SfileHDF5::get_patch_dims_2( EW& ew, int g, int hs, int& ibeg, int& iend, int& jbeg, int& jend ) */
+/* { */
+/*    int ib=ew.m_iStartInt[g]; */
+/*    int ie=ew.m_iEndInt[g]; */
+/*    int jb=ew.m_jStartInt[g]; */
+/*    int je=ew.m_jEndInt[g]; */
+/*    if( (ib-1) % hs == 0 ) */
+/*       ibeg = (ib-1)/hs; */
+/*    else */
+/*       ibeg = (ib-1)/hs+1; */
+/*    if( (jb-1) % hs == 0 ) */
+/*       jbeg = (jb-1)/hs; */
+/*    else */
+/*       jbeg = (jb-1)/hs+1; */
+/*    iend = (ie-1)/hs; */
+/*    jend = (je-1)/hs; */
+/* } */
+/* //----------------------------------------------------------------------- */
+/* void SfileHDF5::get_patch_dims( sfile_breaks brk, int& ibeg, int& iend, int& jbeg, int& jend ) */
+/* { */
+/*    if( (brk.ib-1) % brk.hs == 0 ) */
+/*       ibeg = (brk.ib-1)/brk.hs; */
+/*    else */
+/*       ibeg = (brk.ib-1)/brk.hs+1; */
+/*    if( (brk.jb-1) % brk.hs == 0 ) */
+/*       jbeg = (brk.jb-1)/brk.hs; */
+/*    else */
+/*       jbeg = (brk.jb-1)/brk.hs+1; */
+/*    iend = (brk.ie-1)/brk.hs; */
+/*    jend = (brk.je-1)/brk.hs; */
+/* } */
 
-//-----------------------------------------------------------------------
-void smooth_z_interface(float *data, int maxIter, int imin, int imax, int jmin, int jmax)
-{
-    float_sw4 rf=0.2; // rf<0.25 for stability
-    int iter;
-    int isize = imax - imin + 1, jsize = jmax - jmin + 1;
-    int size = isize * jsize;
-    float *tmp  = new float[size];
+/* //----------------------------------------------------------------------- */
+/* void smooth_z_interface(float *data, int maxIter, int imin, int imax, int jmin, int jmax) */
+/* { */
+/*     float_sw4 rf=0.2; // rf<0.25 for stability */
+/*     int iter; */
+/*     int isize = imax - imin + 1, jsize = jmax - jmin + 1; */
+/*     int size = isize * jsize; */
+/*     float *tmp  = new float[size]; */
 
-    // Laplacian filter
-    for (iter=0; iter < maxIter; iter++)
-    {
-        #pragma omp parallel for
-        for (int i = imin+1; i <= imax-1; ++i) 
-        {
-            for (int j = jmin+1; j <= jmax-1; ++j)
-            {
-                tmp[i + j*isize] = data[i + j*isize] + rf*(data[i+1 + j*isize ] + 
-                                   data[i-1 + j*isize] + data[i + (j+1)*isize] + 
-                                   data[i + (j-1)*isize] - 4.*data[i + j*isize]);
-            }
-        }
+/*     // Laplacian filter */
+/*     for (iter=0; iter < maxIter; iter++) */
+/*     { */
+/*         #pragma omp parallel for */
+/*         for (int i = imin+1; i <= imax-1; ++i) */ 
+/*         { */
+/*             for (int j = jmin+1; j <= jmax-1; ++j) */
+/*             { */
+/*                 tmp[i + j*isize] = data[i + j*isize] + rf*(data[i+1 + j*isize ] + */ 
+/*                                    data[i-1 + j*isize] + data[i + (j+1)*isize] + */ 
+/*                                    data[i + (j-1)*isize] - 4.*data[i + j*isize]); */
+/*             } */
+/*         } */
 
-        // Neumann boundary conditions
-        #pragma omp parallel for
-        for (int j = jmin+1; j <= jmax-1; ++j)
-        {
-            int i = imin;
-            tmp[i + j*isize] = tmp[i+1 + j*isize];
-            i = imax;
-            tmp[i + j*isize] = tmp[i-1 + j*isize];
-        }
+/*         // Neumann boundary conditions */
+/*         #pragma omp parallel for */
+/*         for (int j = jmin+1; j <= jmax-1; ++j) */
+/*         { */
+/*             int i = imin; */
+/*             tmp[i + j*isize] = tmp[i+1 + j*isize]; */
+/*             i = imax; */
+/*             tmp[i + j*isize] = tmp[i-1 + j*isize]; */
+/*         } */
 
-        #pragma omp parallel for
-        for (int i = imin+1; i <= imax-1; ++i)
-        {
-            int j = jmin;
-            tmp[i + j*isize] = tmp[i + (j+1)*isize];
-            j = jmax;
-            tmp[i + j*isize] = tmp[i + (j-1)*isize];
-        }
-        // Corners
-        int i = imin;
-        int j = jmin;
-        tmp[i + j*isize] = tmp[i+1 + (j+1)*isize];
+/*         #pragma omp parallel for */
+/*         for (int i = imin+1; i <= imax-1; ++i) */
+/*         { */
+/*             int j = jmin; */
+/*             tmp[i + j*isize] = tmp[i + (j+1)*isize]; */
+/*             j = jmax; */
+/*             tmp[i + j*isize] = tmp[i + (j-1)*isize]; */
+/*         } */
+/*         // Corners */
+/*         int i = imin; */
+/*         int j = jmin; */
+/*         tmp[i + j*isize] = tmp[i+1 + (j+1)*isize]; */
 
-        i = imax;
-        j = jmin;
-        tmp[i + j*isize] = tmp[i-1 + (j+1)*isize];
+/*         i = imax; */
+/*         j = jmin; */
+/*         tmp[i + j*isize] = tmp[i-1 + (j+1)*isize]; */
 
-        i = imin;
-        j = jmax;
-        tmp[i + j*isize] = tmp[i+1 + (j-1)*isize];
+/*         i = imin; */
+/*         j = jmax; */
+/*         tmp[i + j*isize] = tmp[i+1 + (j-1)*isize]; */
 
-        i = imax;
-        j = jmax;
-        tmp[i + j*isize] = tmp[i-1 + (j-1)*isize];
+/*         i = imax; */
+/*         j = jmax; */
+/*         tmp[i + j*isize] = tmp[i-1 + (j-1)*isize]; */
 
-        /* communicate_array_2d_ext( tmp ); */
+/*         /1* communicate_array_2d_ext( tmp ); *1/ */
 
-        // update solution
-        memcpy(data, tmp, sizeof(float)*size);
-    }// end for iter
-}
+/*         // update solution */
+/*         memcpy(data, tmp, sizeof(float)*size); */
+/*     }// end for iter */
+/* } */
 
 
-//-----------------------------------------------------------------------
-void SfileHDF5::interp_interface(float* z_top, float* z_bot, 
-    int fibeg, int fiend, int fjbeg, int fjend)
-{
-  // z_bot has dims (fibeg:fiend,fjbeg:fjend)
-  // assume hs=2 coarser for z_top (from p-1)
-  // set coarse points to be the same
-  // set in-between points to be avg of coarse ones
-  ASSERT(((fiend-fibeg)%2)==0); // make sure we can coarsen by 2
-  int sizei = (fiend-fibeg)+1;
-  int sizeci = (fiend-fibeg)/2 +1;
-  int cibeg = fibeg/2;
-  int ciend = fiend/2;
-  int cjbeg = fjbeg/2;
-  int cjend = fjend/2;
-  for (int cj=cjbeg; cj <= cjend; ++cj)
-  for (int ci=cibeg; ci <= ciend; ++ci)
-  {
-    int cix = ci-cibeg+sizeci*(cj-cjbeg);
-    // corresponding fine grid index
-    int i=2*ci;
-    int j=2*cj;
-    int ix = i+sizei*j;
+/* //----------------------------------------------------------------------- */
+/* void SfileHDF5::interp_interface(float* z_top, float* z_bot, */ 
+/*     int fibeg, int fiend, int fjbeg, int fjend) */
+/* { */
+/*   // z_bot has dims (fibeg:fiend,fjbeg:fjend) */
+/*   // assume hs=2 coarser for z_top (from p-1) */
+/*   // set coarse points to be the same */
+/*   // set in-between points to be avg of coarse ones */
+/*   ASSERT(((fiend-fibeg)%2)==0); // make sure we can coarsen by 2 */
+/*   int sizei = (fiend-fibeg)+1; */
+/*   int sizeci = (fiend-fibeg)/2 +1; */
+/*   int cibeg = fibeg/2; */
+/*   int ciend = fiend/2; */
+/*   int cjbeg = fjbeg/2; */
+/*   int cjend = fjend/2; */
+/*   for (int cj=cjbeg; cj <= cjend; ++cj) */
+/*   for (int ci=cibeg; ci <= ciend; ++ci) */
+/*   { */
+/*     int cix = ci-cibeg+sizeci*(cj-cjbeg); */
+/*     // corresponding fine grid index */
+/*     int i=2*ci; */
+/*     int j=2*cj; */
+/*     int ix = i+sizei*j; */
 
-    // Copy node values
-    z_bot[ix] = z_top[cix];
+/*     // Copy node values */
+/*     z_bot[ix] = z_top[cix]; */
 
-    // Avg coarse points to the other 3 nearby fine points (1,0), (0,1), (1,1)
-    if (ci < ciend)
-      z_bot[ix+1] = .5*(z_top[cix] + z_top[cix+1]);
-    if (cj < cjend)
-      z_bot[ix+sizei] = .5*(z_top[cix] + z_top[cix+sizeci]);
-    if ((ci < ciend) && (cj < cjend))
-      z_bot[ix+1+sizei] = .25*(z_top[cix] + z_top[cix+1]
-          + z_top[cix+sizeci] + z_top[cix+1+sizeci]);
-  }
-}
+/*     // Avg coarse points to the other 3 nearby fine points (1,0), (0,1), (1,1) */
+/*     if (ci < ciend) */
+/*       z_bot[ix+1] = .5*(z_top[cix] + z_top[cix+1]); */
+/*     if (cj < cjend) */
+/*       z_bot[ix+sizei] = .5*(z_top[cix] + z_top[cix+sizeci]); */
+/*     if ((ci < ciend) && (cj < cjend)) */
+/*       z_bot[ix+1+sizei] = .25*(z_top[cix] + z_top[cix+1] */
+/*           + z_top[cix+sizeci] + z_top[cix+1+sizeci]); */
+/*   } */
+/* } */
 
 
 /* //----------------------------------------------------------------------- */
@@ -1786,84 +1786,84 @@ void SfileHDF5::interp_interface(float* z_top, float* z_bot,
 /*   } */
 /* } */
 
-//-----------------------------------------------------------------------
-void SfileHDF5::calculate_grid_boundingbox(EW& ew, float_sw4 (&bb)[3][2])
-{
-  // Figure out bounding box in this processor
-  float_sw4 xmin=1e38, xmax=-1e38, ymin=1e38, ymax=-1e38, zmin=1e38, zmax=-1e38;
-  int g=ew.mNumberOfGrids-1;
-  float_sw4 h=ew.mGridSize[g];
-  if( xmin > (ew.m_iStartInt[g]-1)*h )
-    xmin =  (ew.m_iStartInt[g]-1)*h;
-  if( xmax < (ew.m_iEndInt[g]-1)*h )
-    xmax =  (ew.m_iEndInt[g]-1)*h;
-  if( ymin > (ew.m_jStartInt[g]-1)*h )
-    ymin =  (ew.m_jStartInt[g]-1)*h;
-  if( ymax < (ew.m_jEndInt[g]-1)*h )
-    ymax =  (ew.m_jEndInt[g]-1)*h;
-  if( ew.topographyExists() && g == ew.mNumberOfGrids-1 )
-  {
-     int kb=ew.m_kStartInt[g];
-     for( int j=ew.m_jStartInt[g] ; j <= ew.m_jEndInt[g] ; j++ )
-        for( int i=ew.m_iStartInt[g] ; i <= ew.m_iEndInt[g] ; i++ )
-           if( zmin > ew.mZ(i,j,kb) )
-              zmin = ew.mZ(i,j,kb);
-  }
-  else
-  {
-     if( zmin > (ew.m_kStartInt[g]-1)*h + ew.m_zmin[g] ) 
-        zmin = (ew.m_kStartInt[g]-1)*h + ew.m_zmin[g];
-  }
-  zmax = (ew.m_kEnd[0]-1)*h + ew.m_zmin[0]; // bottom of the domain
-  bb[0][0] = xmin;
-  bb[0][1] = xmax;
-  bb[1][0] = ymin;
-  bb[1][1] = ymax;
-  bb[2][0] = zmin;
-  bb[2][1] = zmax;
-}
+/* //----------------------------------------------------------------------- */
+/* void SfileHDF5::calculate_grid_boundingbox(EW& ew, float_sw4 (&bb)[3][2]) */
+/* { */
+/*   // Figure out bounding box in this processor */
+/*   float_sw4 xmin=1e38, xmax=-1e38, ymin=1e38, ymax=-1e38, zmin=1e38, zmax=-1e38; */
+/*   int g=ew.mNumberOfGrids-1; */
+/*   float_sw4 h=ew.mGridSize[g]; */
+/*   if( xmin > (ew.m_iStartInt[g]-1)*h ) */
+/*     xmin =  (ew.m_iStartInt[g]-1)*h; */
+/*   if( xmax < (ew.m_iEndInt[g]-1)*h ) */
+/*     xmax =  (ew.m_iEndInt[g]-1)*h; */
+/*   if( ymin > (ew.m_jStartInt[g]-1)*h ) */
+/*     ymin =  (ew.m_jStartInt[g]-1)*h; */
+/*   if( ymax < (ew.m_jEndInt[g]-1)*h ) */
+/*     ymax =  (ew.m_jEndInt[g]-1)*h; */
+/*   if( ew.topographyExists() && g == ew.mNumberOfGrids-1 ) */
+/*   { */
+/*      int kb=ew.m_kStartInt[g]; */
+/*      for( int j=ew.m_jStartInt[g] ; j <= ew.m_jEndInt[g] ; j++ ) */
+/*         for( int i=ew.m_iStartInt[g] ; i <= ew.m_iEndInt[g] ; i++ ) */
+/*            if( zmin > ew.mZ(i,j,kb) ) */
+/*               zmin = ew.mZ(i,j,kb); */
+/*   } */
+/*   else */
+/*   { */
+/*      if( zmin > (ew.m_kStartInt[g]-1)*h + ew.m_zmin[g] ) */ 
+/*         zmin = (ew.m_kStartInt[g]-1)*h + ew.m_zmin[g]; */
+/*   } */
+/*   zmax = (ew.m_kEnd[0]-1)*h + ew.m_zmin[0]; // bottom of the domain */
+/*   bb[0][0] = xmin; */
+/*   bb[0][1] = xmax; */
+/*   bb[1][0] = ymin; */
+/*   bb[1][1] = ymax; */
+/*   bb[2][0] = zmin; */
+/*   bb[2][1] = zmax; */
+/* } */
 
-//-----------------------------------------------------------------------
-void SfileHDF5::calculate_interpolation_patch(vector<Sarray>& matl, 
-    int nghost, float_sw4 (&bb)[3][2], float_sw4 x0, float_sw4 y0, 
-    float hh, int nvars, vector<int>& patch_nk)
-{
-  bool debug=false;
-  MPI_Comm comm = MPI_COMM_WORLD;
-  int myRank;
-  MPI_Comm_rank(MPI_COMM_WORLD, &myRank);
+/* //----------------------------------------------------------------------- */
+/* void SfileHDF5::calculate_interpolation_patch(vector<Sarray>& matl, */ 
+/*     int nghost, float_sw4 (&bb)[3][2], float_sw4 x0, float_sw4 y0, */ 
+/*     float hh, int nvars, vector<int>& patch_nk) */
+/* { */
+/*   bool debug=false; */
+/*   MPI_Comm comm = MPI_COMM_WORLD; */
+/*   int myRank; */
+/*   MPI_Comm_rank(MPI_COMM_WORLD, &myRank); */
 
-  // Calculate the Sarray bounds relative to the Sfile origin, grid spacing
-  int npatch = patch_nk.size();
-  for (int p=0; p < npatch; ++p)
-  {
-    float h = hh * pow(2,npatch-1-p); // horizontal grid spacing doubles
-    float tol = 1e-2;
-    int gis,gie,gjs,gje,gks,gke; // start and end SW4 indices for each dimension
-    gis = static_cast<int>(floor(1 + (bb[0][0]-x0)/h + tol))-nghost;
-    gie = static_cast<int>(ceil(1 + (bb[0][1]-x0)/h - tol))+nghost;
-    gjs = static_cast<int>(floor(1 + (bb[1][0]-y0)/h + tol))-nghost;
-    gje = static_cast<int>(ceil(1 + (bb[1][1]-y0)/h - tol))+nghost;
-    // k indices are determined from interfaces, catch out-of-bounds later
-    gks = 1;
-    gke = patch_nk[p];
-    Sarray& data = matl[p];
-    data.define(nvars,gis,gie,gjs,gje,gks,gke);
-    if (debug)
-    {
-      cout << "Rank " << myRank << " on SW4 domain:" 
-        << " x=(" << bb[0][0] << ", " << bb[0][1] << "), "
-        << " y=(" << bb[1][0] << ", " << bb[1][1] << "), "
-        << " z=(" << bb[2][0] << ", " << bb[2][1] << "), " << endl
-        << "--> Sfile patch " << p << " grid spacing h=" << h
-        << ", sw4 indices:" << " i=(" << data.m_ib << ", " << data.m_ie << "), "
-        << " j=(" << data.m_jb << ", " << data.m_je << "), "
-        << " k=(" << data.m_kb << ", " << data.m_ke << "), nghost=" 
-        << nghost << endl;
-      cout.flush();
-    }
-  }
-}
+/*   // Calculate the Sarray bounds relative to the Sfile origin, grid spacing */
+/*   int npatch = patch_nk.size(); */
+/*   for (int p=0; p < npatch; ++p) */
+/*   { */
+/*     float h = hh * pow(2,npatch-1-p); // horizontal grid spacing doubles */
+/*     float tol = 1e-2; */
+/*     int gis,gie,gjs,gje,gks,gke; // start and end SW4 indices for each dimension */
+/*     gis = static_cast<int>(floor(1 + (bb[0][0]-x0)/h + tol))-nghost; */
+/*     gie = static_cast<int>(ceil(1 + (bb[0][1]-x0)/h - tol))+nghost; */
+/*     gjs = static_cast<int>(floor(1 + (bb[1][0]-y0)/h + tol))-nghost; */
+/*     gje = static_cast<int>(ceil(1 + (bb[1][1]-y0)/h - tol))+nghost; */
+/*     // k indices are determined from interfaces, catch out-of-bounds later */
+/*     gks = 1; */
+/*     gke = patch_nk[p]; */
+/*     Sarray& data = matl[p]; */
+/*     data.define(nvars,gis,gie,gjs,gje,gks,gke); */
+/*     if (debug) */
+/*     { */
+/*       cout << "Rank " << myRank << " on SW4 domain:" */ 
+/*         << " x=(" << bb[0][0] << ", " << bb[0][1] << "), " */
+/*         << " y=(" << bb[1][0] << ", " << bb[1][1] << "), " */
+/*         << " z=(" << bb[2][0] << ", " << bb[2][1] << "), " << endl */
+/*         << "--> Sfile patch " << p << " grid spacing h=" << h */
+/*         << ", sw4 indices:" << " i=(" << data.m_ib << ", " << data.m_ie << "), " */
+/*         << " j=(" << data.m_jb << ", " << data.m_je << "), " */
+/*         << " k=(" << data.m_kb << ", " << data.m_ke << "), nghost=" */ 
+/*         << nghost << endl; */
+/*       cout.flush(); */
+/*     } */
+/*   } */
+/* } */
 
 /* #endif // ifdef USE_HDF5 */
 

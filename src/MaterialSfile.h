@@ -102,7 +102,8 @@ class MaterialSfile : public MaterialData
    vector<int> m_ifirst, m_ilast, m_jfirst, m_jlast, m_kfirst, m_klast, m_ni, m_nj, m_nk;
 
   // file coordinate system is x=(i-1)*m_hx[gr] + m_xmin[gr], in SW4 coordinates.
-   vector<float_sw4> m_z0, m_hh, m_hv;
+   vector<float_sw4> m_hh;
+   /* vector<float_sw4> m_z0, m_hh, m_hv; */
    double m_x0, m_y0, m_lon0, m_lat0, m_azim;
 
    // xminloc, xmaxloc, etc. is the bounding box for the set of data patches in this processor.
