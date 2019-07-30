@@ -8,10 +8,9 @@ openmp=no
 raja_cuda=yes
 
 LAPACK_DIR = /gpfs/alpine/csc340/proj-shared/larsen/sw4_uberenv/uberenv_libs/spack/opt/spack/linux-rhel7-ppc64le/gcc-5.4.0/netlib-lapack-3.8.0-2zkztxddylrbg4yua4bgm7afwcsgyh34
-BLAS_DIR = /gpfs/alpine/csc340/proj-shared/larsen/sw4_uberenv/uberenv_libs/spack/opt/spack/linux-rhel7-ppc64le/gcc-5.4.0/netlib-lapack-3.8.0-2zkztxddylrbg4yua4bgm7afwcsgyh34
-RAJA_LOCATION = /gpfs/alpine/csc340/proj-shared/larsen/sw4_uberenv/uberenv_libs/spack/opt/spack/linux-rhel7-ppc64le/gcc-5.4.0/raja-0.7.0-b37dcelfsjdjsesyyuwrb3l73xgptsze/
-PROJ_HOME = /gpfs/alpine/csc340/proj-shared/larsen/sw4_uberenv/uberenv_libs/spack/opt/spack/linux-rhel7-ppc64le/gcc-5.4.0/proj-5.0.1-bdtgbpiylu6n3gmad54rpeam6lpb2bia/
-UMPIRE_HOME = /gpfs/alpine/csc340/proj-shared/larsen/sw4_uberenv/uberenv_libs/spack/opt/spack/linux-rhel7-ppc64le/gcc-5.4.0/umpire-0.3.3-cqgdzeiuw2cl66vdhggzy5pltflsxuy2
+RAJA_LOCATION = /gpfs/alpine/csc340/proj-shared/larsen/sw4_uberenv/uberenv_libs/spack/opt/spack/linux-rhel7-ppc64le/gcc-5.4.0/raja-0.7.0-7nnlntn5lzbgbobw2mwzlgusq6jm3vb2
+PROJ_HOME = /gpfs/alpine/csc340/proj-shared/larsen/sw4_uberenv/uberenv_libs/spack/opt/spack/linux-rhel7-ppc64le/gcc-5.4.0/proj-5.0.1-bdtgbpiylu6n3gmad54rpeam6lpb2bia
+UMPIRE_HOME = /gpfs/alpine/csc340/proj-shared/larsen/sw4_uberenv/uberenv_libs/spack/opt/spack/linux-rhel7-ppc64le/gcc-5.4.0/umpire-0.3.3-xdraix4dgwdk3vmw6oswu2c7deoxio3i
 CUDA_HOME = $(OLCF_CUDA_ROOT)
 EXTRA_FORT_FLAGS = 
 MORE_FLAGS = -DENABLE_MPI_TIMING_BARRIER=1 -DSW4_USE_UMPIRE=1 -DSW4_RAJA_VERSION=7
