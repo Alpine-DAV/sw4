@@ -1351,6 +1351,7 @@ vector<int *> m_NumberOfBCPoints;
 // ghost point index window for each side of the boundary on each grid
 vector<int *> m_BndryWindow;
 
+void to_blueprint(std::vector<Sarray> &field);
 
 // attenuation variables (only allocated if attenuation is enabled)
 bool m_use_attenuation, m_att_use_max_frequency;

@@ -40,8 +40,283 @@
  #ifdef ENABLE_CUDA
  #include "cuda_profiler_api.h"
  #endif
+  
+ #include <conduit.hpp>
+ #include <conduit_blueprint.hpp>
+ #include <conduit_relay_mpi.hpp>
+ #include <ascent.hpp>
+ #include <string.h>
 
  #define SQR(x) ((x)*(x))
+
+ int cycle = 0;
+ void EW::to_blueprint(std::vector<Sarray> &field)
+ {
+    cycle++;
+    if(cycle % 100 != 0)
+    {
+      return;
+    }
+    //printf("###### info ######\n");
+    //printf("RANK %d\n", m_myRank);
+    //printf("Number of grids %d\n", (int)mNumberOfGrids);
+    //printf("Number of cartesian rids %d\n", (int)mNumberOfCartesianGrids);
+    conduit::Node domains;
+    //// global number of grid points on each refinement level, without ghost points
+    //vector<int> m_global_nx, m_global_ny, m_global_nz;
+
+
+    // find proper offset to give us unique domain ids
+    int par_size = conduit::relay::mpi::size(m_cartesian_communicator);
+
+    conduit::Node n_grid_cnt_snd(conduit::DataType::c_int(par_size));
+    conduit::Node n_grid_cnt_rcv(conduit::DataType::c_int(par_size));
+
+    int *g_counts_snd_ptr = n_grid_cnt_snd.value();
+    g_counts_snd_ptr[m_myRank] = mNumberOfGrids;
+
+    conduit::relay::mpi::sum_all_reduce(n_grid_cnt_snd,
+                                        n_grid_cnt_rcv,
+                                        m_cartesian_communicator);
+    // domain offset is the sum of the # of domains on lower ranks
+    int domain_offset = 0;
+    int *g_counts_rcv_ptr = n_grid_cnt_rcv.value();
+
+    for(int ii = 0; ii < m_myRank; ++ii)
+    {
+        domain_offset+= g_counts_rcv_ptr[ii];
+    }
+
+    for(int ii = 0; ii < mNumberOfGrids; ++ii)
+    {
+      //printf("GRID %d\n", ii);
+      //printf("iStart - iEnd %d(%d) - %d(%d)\n", (int)m_iStart[ii], m_paddingCells[0],(int)m_iEnd[ii], m_paddingCells[1]);
+      //printf("jStart - jEnd %d(%d) - %d(%d)\n", (int)m_jStart[ii], m_paddingCells[2],(int)m_jEnd[ii], m_paddingCells[3]);
+      //printf("kStart - kEnd %d - %d\n", (int)m_kStart[ii], (int)m_kEnd[ii]);
+
+      //printf("iStartInt - iEndInt %d - %d\n", (int)m_iStartInt[ii], (int)m_iEndInt[ii]);
+      //printf("jStartInt - jEndInt %d - %d\n", (int)m_jStartInt[ii], (int)m_jEndInt[ii]);
+      //printf("kStartInt - kEndInt %d - %d\n", (int)m_kStartInt[ii], (int)m_kEndInt[ii]);
+      int z_pad[2];
+      z_pad[0] = m_kStartInt[ii] - m_kStart[ii];
+      z_pad[1] = m_jEnd[ii] - m_jEndInt[ii];
+      printf("z_pad %d %d\n", z_pad[0], z_pad[1]);
+
+      if(m_myRank == 0)
+      {
+        printf("**** GLOBAL RANGES *******\n");
+        printf("**** i %d - %d ******\n", (int)m_iStartActGlobal[ii], (int)m_iEndActGlobal[ii]);
+        printf("**** j %d - %d ******\n", (int)m_jStartActGlobal[ii], (int)m_jEndActGlobal[ii]);
+        printf("**** k %d - %d ******\n", (int)m_kStartActGlobal[ii], (int)m_kEndActGlobal[ii]);
+        printf("##### NCOMPS %d", (int)field[0].ncomp());
+
+      }
+
+      const int nx = m_iEnd[ii] - m_iStart[ii];
+      const int ny = m_jEnd[ii] - m_jStart[ii];
+      const int nz = m_kEnd[ii] - m_kStart[ii];
+
+      const int nzones = nx * ny * nz;
+      const int npoints = (nx + 1) * (ny + 1) * (nz + 1);
+
+      double grid_size = mGridSize[ii];
+
+      double originx = m_iStart[ii] * grid_size;
+      double originy = m_jStart[ii] * grid_size;
+      double originz = m_kStart[ii] * grid_size + m_zmin[ii];
+
+      conduit::Node &dom = domains.append();
+      dom["state/time"] = 0;
+      dom["state/cycle"] = cycle;
+      dom["state/domain_id"] = domain_offset;
+      domain_offset++;
+
+      if(ii < mNumberOfCartesianGrids)
+      {
+        // uniform
+        dom["coordsets/coords/type"] = "uniform";
+        dom["coordsets/coords/dims/i"] = nx + 1;
+        dom["coordsets/coords/dims/j"] = ny + 1;
+        dom["coordsets/coords/dims/k"] = nz + 1;
+
+        dom["coordsets/coords/spacing/dx"] = grid_size;
+        dom["coordsets/coords/spacing/dy"] = grid_size;
+        dom["coordsets/coords/spacing/dz"] = grid_size;
+
+
+        dom["coordsets/coords/origin/x"] = originx;
+        dom["coordsets/coords/origin/y"] = originy;
+        dom["coordsets/coords/origin/z"] = originz;
+
+        dom["topologies/topo/coordset"] = "coords";
+        dom["topologies/topo/type"] = "uniform";
+        dom["topologies/topo/origin/i"] = m_iStart[ii];
+        dom["topologies/topo/origin/j"] = m_jStart[ii];
+        dom["topologies/topo/origin/k"] = m_kStart[ii];
+        //printf("Origin %f, %f, %f spacing %f\n", originx, originy, originz, grid_size);
+
+      }
+      else
+      {
+        // curvilinear
+        double * x_coords = mX.c_ptr();
+        double * y_coords = mY.c_ptr();
+        double * z_coords = mZ.c_ptr();
+        //printf("points %d coords %d\n", npoints, mX.npts());
+        dom["coordsets/coords/type"] = "explicit";
+        dom["coordsets/coords/values/x"].set_external(x_coords, mX.npts());
+        dom["coordsets/coords/values/y"].set_external(y_coords, mY.npts());
+        dom["coordsets/coords/values/z"].set_external(z_coords, mZ.npts());
+
+        dom["topologies/topo/type"] = "structured";
+        dom["topologies/topo/coordset"] = "coords";
+        dom["topologies/topo/origin/i"] = m_iStart[ii];
+        dom["topologies/topo/origin/j"] = m_jStart[ii];
+        dom["topologies/topo/origin/k"] = m_kStart[ii];
+        dom["topologies/topo/elements/dims/i"] = nx;
+        dom["topologies/topo/elements/dims/j"] = ny;
+        dom["topologies/topo/elements/dims/k"] = nz;
+
+      }
+
+      bool assoc_nodes = false;
+      double *fdata = field.at(ii).c_ptr();
+      //printf("p1 %llu p2 %llu \n", (long long unsigned int)fdata, (long long unsigned int)ptr);
+      int nvals = field.at(ii).npts();
+
+      if(nvals == npoints) assoc_nodes = true;
+
+      if(assoc_nodes)
+      {
+        dom["fields/something/association"] = "vertex";
+        //printf("NODES\n");
+      }
+      else
+      {
+        dom["fields/something/association"] = "element";
+        //printf("ELEMENTS\n");
+      }
+
+      dom["fields/something/topology"] = "topo";
+
+      bool is_vector = field.at(ii).ncomp() == 3;
+
+      if(is_vector)
+      {
+
+        dom["fields/something/values/x"].set_external_float64_ptr(fdata,
+                                                                  nvals);
+
+        dom["fields/something/values/y"].set_external_float64_ptr(fdata + nvals,
+                                                                  nvals);
+
+
+        dom["fields/something/values/z"].set_external_float64_ptr(fdata + nvals * 2,
+                                                                  nvals);
+      }
+      else
+      {
+        dom["fields/something/values"].set(fdata, nvals);
+      }
+
+      dom["fields/ascent_ghosts/association"] = "element";
+      dom["fields/ascent_ghosts/topology"] = "topo";
+      dom["fields/ascent_ghosts/values"].set(conduit::DataType::int32(nzones));
+
+      int *ghosts = dom["fields/ascent_ghosts/values"].value();
+      memset(ghosts, 0, sizeof(int) * nzones);
+      // TODO: there is a better way
+      for(int z = 0; z < nz; ++z)
+      {
+        for(int y = 0; y < ny; ++y)
+        {
+          for(int x = 0; x < nx; ++x)
+          {
+            bool ghost = false;
+            if(x < m_paddingCells[0] || x + m_paddingCells[1] > nx)
+            {
+              ghost = true;
+            }
+            if(y < m_paddingCells[2] || y + m_paddingCells[3] > ny)
+            {
+              ghost = true;
+            }
+            if(z < z_pad[0] || z + z_pad[1] > nz)
+            {
+              ghost = true;
+            }
+            if(ghost)
+            {
+              int index = z * nx * ny + y * nx + x;
+              ghosts[index] = 1;
+            }
+          }
+        }
+      }
+
+      //if(m_myRank == 0)
+      //{
+      //  conduit::Node verify_info;
+      //  conduit::blueprint::mesh::verify(dom,verify_info);
+      //  verify_info.print();
+      //}
+    }
+
+    //conduit::Node verify_info;
+    //conduit::blueprint::mesh::verify(domains.child(0),verify_info);
+    //verify_info.print();
+
+    conduit::Node actions;
+
+    conduit::Node extracts;
+    extracts["e1/type"]  = "relay";
+
+    extracts["e1/params/path"] = "sw4_out";
+    extracts["e1/params/protocol"] = "blueprint/mesh/hdf5";
+
+    conduit::Node &add_extracts = actions.append();
+    add_extracts["action"] = "add_extracts";
+    add_extracts["extracts"] = extracts;
+    conduit::Node scenes;
+    //plot 1
+    //scenes["s1/plots/p1/type"] = "mesh";
+    //scenes["s1/image_prefix"] = "hopefully_the_mesh";
+
+    //scenes["s2/plots/p1/type"] = "pseudocolor";
+    //scenes["s2/plots/p1/params/field"] = "ascent_ghosts";
+    //scenes["s2/image_prefix"] = "hopefully_the_ghosts";
+    //scenes["s2/renders/r1/type"] = "cinema";
+    //scenes["s2/renders/r1/phi"] = 8;
+    //scenes["s2/renders/r1/theta"] = 8;
+    //scenes["s2/renders/r1/db_name"] = "ghosts";
+
+    //scenes["s3/plots/p1/type"] = "pseudocolor";
+    //scenes["s3/plots/p1/params/field"] = "something";
+    //scenes["s3/image_prefix"] = "hopefully_the_something";
+
+    // add the scenes
+    //conduit::Node &add_scenes= actions.append();
+    //add_scenes["action"] = "add_scenes";
+    //add_scenes["scenes"] = scenes;
+    // execute
+    conduit::Node &execute  = actions.append();
+    execute["action"] = "execute";
+
+    //
+    // Run Ascent
+    //
+    ascent::Ascent ascent;
+
+    conduit::Node ascent_opts;
+    ascent_opts["ascent_info"] = "verbose";
+    ascent_opts["runtime/type"] = "ascent";
+    ascent_opts["mpi_comm"] = MPI_Comm_c2f(m_cartesian_communicator);
+    ascent.open(ascent_opts);
+    ascent.publish(domains);
+    ascent.execute(actions);
+    ascent.close();
+    //exit(0);
+  }
 
  //--------------------------------------------------------------------
  void EW::solve( vector<Source*> & a_Sources, vector<TimeSeries*> & a_TimeSeries )

@@ -232,8 +232,8 @@ sw4: $(FSW4) $(FOBJ)
 	@echo "FC=" $(FC) " EXTRA_FORT_FLAGS=" $(EXTRA_FORT_FLAGS)
 	@echo "EXTRA_LINK_FLAGS"= $(EXTRA_LINK_FLAGS)
 	@echo "******************************************************"
-	cd $(builddir); nvcc -dlink -arch=sm_70 -o file_link.o $(OBJ) $(LINKFLAGS) -lcudadevrt -lcudart -lnvidia-ml
-	cd $(builddir); $(LINKER) $(LINKFLAGS) -o $@ main.o file_link.o $(OBJ) $(QUADPACK) $(linklibs) 
+	cd $(builddir); nvcc -dlink -arch=sm_70 -o file_link.o $(OBJ) $(LINKFLAGS) $(ASCENT_LINK_FLAGS) -lcudadevrt -lcudart -lnvidia-ml 
+	cd $(builddir); $(LINKER) $(LINKFLAGS) -o $@ main.o file_link.o $(OBJ) $(QUADPACK) $(linklibs)  $(ASCENT_LINK_FLAGS)
 # test: linking with openmp for the routine rhs4sgcurv.o
 #	cd $(builddir); $(CXX) $(CXXFLAGS) -qopenmp -o $@ main.o $(OBJ) $(QUADPACK) $(linklibs)
 	@cat wave.txt
