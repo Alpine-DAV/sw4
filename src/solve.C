@@ -892,7 +892,6 @@ global_prefetch();
        a_TimeSeries[ts]->recordData(uRec);
      }
    }
-
  // save any images for cycle = 0 (initial data), or beginCycle-1 (checkpoint restart)
    update_images( beginCycle-1, t, U, Um, Up, mRho, mMu, mLambda, a_Sources, 1 );
    for( int i3 = 0 ; i3 < mImage3DFiles.size() ; i3++ )
@@ -1293,8 +1292,10 @@ bool cudaProfilerOn = false;
 //
 // AP: Note to self: Any quantity related to velocities will be lagged by one time step
 //
+//
    SYNC_STREAM; // This probably needs to be somewhere inside update_images so that it is called only before an image write
     // No strictly required due to the sync in enforceIC/consinsp/communicate_array_2d/copy_kplane.
+    to_blueprint(U);
     update_images( currentTimeStep, t, Up, U, Um, mRho, mMu, mLambda, a_Sources, currentTimeStep == mNumberOfTimeSteps );
     for( int i3 = 0 ; i3 < mImage3DFiles.size() ; i3++ )
       mImage3DFiles[i3]->update_image( currentTimeStep, t, mDt, Up, mRho, mMu, mLambda, mRho, mMu, mLambda, 
