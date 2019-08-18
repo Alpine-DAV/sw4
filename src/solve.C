@@ -100,9 +100,9 @@
       int z_pad[2];
       z_pad[0] = m_kStartInt[ii] - m_kStart[ii];
       z_pad[1] = m_jEnd[ii] - m_jEndInt[ii];
-      printf("z_pad %d %d\n", z_pad[0], z_pad[1]);
+      //printf("z_pad %d %d\n", z_pad[0], z_pad[1]);
 
-      if(m_myRank == 0)
+      if(m_myRank == 0 && false)
       {
         printf("**** GLOBAL RANGES *******\n");
         printf("**** i %d - %d ******\n", (int)m_iStartActGlobal[ii], (int)m_iEndActGlobal[ii]);
